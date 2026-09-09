@@ -99,6 +99,34 @@ def db_connect():
     return connection
 
 
+def format_event_time(value, output_format="%Y-%m-%d %H:%M:%S"):
+    if value is None:
+        return ""
+
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value).strftime(output_format)
+
+    if isinstance(value, str):
+        value = value.strip()
+
+        # Try Unix timestamp stored as a string
+        try:
+            return datetime.fromtimestamp(
+                float(value)
+            ).strftime(output_format)
+        except ValueError:
+            pass
+
+        # Try ISO datetime
+        try:
+            parsed = datetime.fromisoformat(value)
+            return parsed.strftime(output_format)
+        except ValueError:
+            return value
+
+    return str(value)
+
+
 def get_history():
     connection = None
 
@@ -116,9 +144,10 @@ def get_history():
         return [
             {
                 "ts": row["timestamp"],
-                "hora": datetime.fromtimestamp(
-                    row["timestamp"]
-                ).strftime("%H:%M"),
+                "hora": format_event_time(
+                    row["timestamp"],
+                    "%H:%M",
+                ),
                 "val": row["level"],
                 "litros": row["liters"],
             }
@@ -155,9 +184,9 @@ def get_events():
         return [
             {
                 "ts": row["timestamp"],
-                "hora": datetime.fromtimestamp(
-                    row["timestamp"]
-                ).strftime("%H:%M:%S"),
+                "hora": format_event_time(
+                    row["timestamp"],
+                ),
                 "tipo": row["type"],
                 "msg": row["message"],
             }

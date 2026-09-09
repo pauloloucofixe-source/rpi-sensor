@@ -21,8 +21,6 @@ services:
     container_name: mina-controller
     restart: unless-stopped
 
-    privileged: true
-
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
@@ -30,14 +28,11 @@ services:
       # LOCAL DEVELOPMENT
       MOCK_SENSOR: "true"
 
-      # Optional mock configuration
+      # Mock water behaviour
       MOCK_INITIAL_LEVEL: "50"
       MOCK_NATURAL_DRAIN_PER_MINUTE: "0.15"
       MOCK_BOREHOLE_FILL_PER_MINUTE: "2.0"
       MOCK_IRRIGATION_DRAIN_PER_MINUTE: "1.0"
-
-      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
 
       DB_PATH: /data/mina.db
 

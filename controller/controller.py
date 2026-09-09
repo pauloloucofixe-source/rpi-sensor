@@ -19,8 +19,8 @@ import requests
 MQTT_HOST = os.getenv("MQTT_HOST", "mosquitto")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+# TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+# TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
 DB_PATH = os.getenv("DB_PATH", "/data/mina.db")
 
@@ -552,30 +552,30 @@ def cleanup_database():
 # TELEGRAM
 # ============================================================
 
-def send_telegram(message):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return
+# def send_telegram(message):
+#     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+#         return
 
-    url = (
-        f"https://api.telegram.org/bot"
-        f"{TELEGRAM_TOKEN}/sendMessage"
-    )
+#     url = (
+#         f"https://api.telegram.org/bot"
+#         f"{TELEGRAM_TOKEN}/sendMessage"
+#     )
 
-    try:
-        requests.post(
-            url,
-            json={
-                "chat_id": TELEGRAM_CHAT_ID,
-                "text": message,
-            },
-            timeout=10,
-        )
+#     try:
+#         requests.post(
+#             url,
+#             json={
+#                 "chat_id": TELEGRAM_CHAT_ID,
+#                 "text": message,
+#             },
+#             timeout=10,
+#         )
 
-    except requests.RequestException as exc:
-        logger.error(
-            "Telegram notification failed: %s",
-            exc,
-        )
+#     except requests.RequestException as exc:
+#         logger.error(
+#             "Telegram notification failed: %s",
+#             exc,
+#         )
 
 
 def alert(event_type, message):
@@ -587,9 +587,9 @@ def alert(event_type, message):
 
     save_event(event_type, message)
 
-    send_telegram(
-        f"[MINA] {message}"
-    )
+    # send_telegram(
+    #     f"[MINA] {message}"
+    # )
 
 
 # ============================================================
@@ -1287,9 +1287,9 @@ def control_loop():
                     "Water sensor recovered",
                 )
 
-                send_telegram(
-                    "[MINA] Water sensor recovered."
-                )
+                # send_telegram(
+                #     "[MINA] Water sensor recovered."
+                # )
 
             now = time.monotonic()
 
