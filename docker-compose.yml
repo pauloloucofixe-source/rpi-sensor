@@ -25,6 +25,9 @@ services:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
 
+      # Timezone
+      TZ: Europe/Lisbon
+
       # LOCAL DEVELOPMENT
       MOCK_SENSOR: "true"
 
@@ -56,6 +59,8 @@ services:
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
+
+      TZ: Europe/Lisbon
 
       DB_PATH: /data/mina.db
 

@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="pt">
-
 <head>
     <meta charset="UTF-8">
 
@@ -28,11 +27,16 @@
 
         h1 {
             color: #00d4ff;
-            margin-bottom: 8px;
+            margin: 0;
         }
 
         h2 {
             margin-top: 0;
+            font-size: 19px;
+        }
+
+        h3 {
+            margin-bottom: 8px;
         }
 
         .header {
@@ -48,6 +52,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            margin-top: 6px;
             font-size: 14px;
             color: #94a3b8;
         }
@@ -72,7 +77,7 @@
         .grid {
             display: grid;
             grid-template-columns:
-                repeat(auto-fit, minmax(300px, 1fr));
+                repeat(auto-fit, minmax(280px, 1fr));
             gap: 20px;
         }
 
@@ -81,6 +86,10 @@
             border: 1px solid #24344d;
             border-radius: 12px;
             padding: 20px;
+        }
+
+        .wide {
+            grid-column: span 2;
         }
 
         .value {
@@ -95,7 +104,7 @@
         }
 
         .status {
-            font-size: 20px;
+            font-size: 18px;
             margin: 10px 0;
         }
 
@@ -115,16 +124,28 @@
             color: #ffaa00 !important;
         }
 
+        .trend-up {
+            color: #00ffaa;
+        }
+
+        .trend-down {
+            color: #ff3355;
+        }
+
+        .trend-neutral {
+            color: #94a3b8;
+        }
+
         button {
             width: 100%;
-            padding: 14px;
+            padding: 13px;
             margin: 5px 0;
             border-radius: 8px;
             border: 1px solid #00d4ff;
             background: transparent;
             color: #00d4ff;
             cursor: pointer;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: bold;
             transition: 0.15s;
         }
@@ -137,11 +158,6 @@
         button:disabled {
             opacity: 0.45;
             cursor: not-allowed;
-        }
-
-        button:disabled:hover {
-            background: transparent;
-            color: inherit;
         }
 
         .danger {
@@ -179,26 +195,6 @@
             color: black;
         }
 
-        #events {
-            height: 250px;
-            overflow-y: auto;
-            font-family: monospace;
-        }
-
-        .event {
-            padding: 8px 6px;
-            border-bottom: 1px solid #24344d;
-            word-break: break-word;
-        }
-
-        .event-type {
-            color: #00d4ff;
-        }
-
-        .event-time {
-            color: #64748b;
-        }
-
         .message {
             min-height: 20px;
             margin-top: 10px;
@@ -218,6 +214,90 @@
             color: #ffaa00;
         }
 
+        .metric-grid {
+            display: grid;
+            grid-template-columns:
+                repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .metric {
+            background: #0b1220;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .metric-value {
+            margin-top: 5px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .thresholds {
+            margin-top: 15px;
+        }
+
+        .threshold {
+            display: flex;
+            justify-content: space-between;
+            padding: 7px 0;
+            border-bottom: 1px solid #24344d;
+            font-size: 14px;
+        }
+
+        .threshold:last-child {
+            border-bottom: 0;
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            margin-bottom: 12px;
+            background: #050914;
+            color: #e2e8f0;
+            border: 1px solid #24344d;
+            border-radius: 6px;
+        }
+
+        label {
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns:
+                repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .event {
+            padding: 8px 6px;
+            border-bottom: 1px solid #24344d;
+            word-break: break-word;
+        }
+
+        .event-type {
+            color: #00d4ff;
+        }
+
+        .event-time {
+            color: #64748b;
+        }
+
+        #events {
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+
         .last-update {
             margin-top: 8px;
             font-size: 12px;
@@ -225,263 +305,653 @@
         }
 
         canvas {
-            max-height: 300px;
+            max-height: 340px;
+        }
+
+        .section-title {
+            margin-top: 30px;
+            margin-bottom: 15px;
+            color: #94a3b8;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        @media (max-width: 900px) {
+            .wide {
+                grid-column: span 1;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 
-
 <body>
 
-    <!-- =====================================================
-         HEADER
-         ====================================================== -->
+<div class="header">
+    <div>
+        <h1>💧 Mina Inteligente</h1>
 
-    <div class="header">
+        <div class="connection-status">
+            <span
+                id="connectionDot"
+                class="connection-dot"
+            ></span>
 
-        <div>
-            <h1>💧 Mina Inteligente</h1>
+            <span id="connectionText">
+                A ligar ao controlador...
+            </span>
+        </div>
+    </div>
+</div>
 
-            <div class="connection-status">
-                <span
-                    id="connectionDot"
-                    class="connection-dot"
-                ></span>
 
-                <span id="connectionText">
-                    A ligar ao controlador...
-                </span>
+<div class="section-title">
+    Dashboard
+</div>
+
+<div class="grid">
+
+    <!-- WATER -->
+
+    <div class="card">
+        <h2>💧 Nível da Água</h2>
+
+        <div
+            class="value"
+            id="level"
+        >
+            --
+        </div>
+
+        <div class="sub-value">
+            <span id="liters">--</span> L
+        </div>
+
+        <div
+            id="trend"
+            class="sub-value trend-neutral"
+        >
+            --
+        </div>
+
+        <div class="thresholds">
+            <div class="threshold">
+                <span>Crítico</span>
+                <strong id="criticalLevel">--</strong>
+            </div>
+
+            <div class="threshold">
+                <span>Paragem rega</span>
+                <strong id="irrigationStop">--</strong>
+            </div>
+
+            <div class="threshold">
+                <span>Início rega</span>
+                <strong id="irrigationStart">--</strong>
+            </div>
+
+            <div class="threshold">
+                <span>Recovery</span>
+                <strong id="recoveryTarget">--</strong>
             </div>
         </div>
 
+        <div class="last-update">
+            Última atualização:
+            <span id="lastUpdate">--</span>
+        </div>
     </div>
 
 
-    <!-- =====================================================
-         MAIN GRID
-         ====================================================== -->
+    <!-- SYSTEM -->
 
-    <div class="grid">
+    <div class="card">
+        <h2>⚙️ Estado</h2>
 
-
-        <!-- =================================================
-             WATER
-             ================================================== -->
-
-        <div class="card">
-
-            <h2>Nível da Água</h2>
-
-            <div
-                class="value"
-                id="level"
-            >
-                --
-            </div>
-
-            <div class="sub-value">
-                <span id="liters">--</span> L
-            </div>
-
-            <div class="status">
-                Controller:
-                <strong id="health">
-                    --
-                </strong>
-            </div>
-
-            <div class="last-update">
-                Última atualização:
-                <span id="lastUpdate">
-                    --
-                </span>
-            </div>
-
+        <div class="status">
+            Controller:
+            <strong id="health">--</strong>
         </div>
 
-
-        <!-- =================================================
-             STATUS
-             ================================================== -->
-
-        <div class="card">
-
-            <h2>Estado</h2>
-
-            <div class="status">
-                Furo:
-                <strong id="borehole">
-                    --
-                </strong>
-            </div>
-
-            <div class="status">
-                Rega:
-                <strong id="pump">
-                    --
-                </strong>
-            </div>
-
-            <div class="status">
-                Modo:
-                <strong id="mode">
-                    --
-                </strong>
-            </div>
-
+        <div class="status">
+            MQTT:
+            <strong id="mqttStatus">--</strong>
         </div>
 
-
-        <!-- =================================================
-             PUMP
-             ================================================== -->
-
-        <div class="card">
-
-            <h2>Bomba de Rega</h2>
-
-            <button
-                class="success"
-                onclick="commandPump('ligar')"
-            >
-                💦 FORÇAR LIGAR
-            </button>
-
-            <button
-                class="danger"
-                onclick="commandPump('parar')"
-            >
-                ⛔ PARAR
-            </button>
-
-            <button
-                onclick="commandPump('auto')"
-            >
-                🤖 AUTO
-            </button>
-
-            <div
-                id="pumpMessage"
-                class="message"
-            ></div>
-
+        <div class="status">
+            Modo:
+            <strong id="mode">--</strong>
         </div>
 
-
-        <!-- =================================================
-             BOREHOLE
-             ================================================== -->
-
-        <div class="card">
-
-            <h2>Furo</h2>
-
-            <button
-                class="success"
-                onclick="commandBorehole('ligar')"
-            >
-                ⚡ LIGAR FURO
-            </button>
-
-            <button
-                class="danger"
-                onclick="commandBorehole('parar')"
-            >
-                ⛔ PARAR FURO
-            </button>
-
-            <div
-                id="boreholeMessage"
-                class="message"
-            ></div>
-
+        <div class="status">
+            Rega:
+            <strong id="pump">--</strong>
         </div>
 
-
-        <!-- =================================================
-             SYSTEM MODE
-             ================================================== -->
-
-        <div class="card">
-
-            <h2>Modo do Sistema</h2>
-
-            <button
-                id="modeAuto"
-                onclick="commandMode('AUTO')"
-            >
-                🤖 AUTOMÁTICO
-            </button>
-
-            <button
-                id="modeManualOn"
-                class="success"
-                onclick="commandMode('MANUAL_ON')"
-            >
-                🟢 MANUAL ON
-            </button>
-
-            <button
-                id="modeManualOff"
-                class="danger"
-                onclick="commandMode('MANUAL_OFF')"
-            >
-                🔴 MANUAL OFF
-            </button>
-
-            <div
-                id="modeMessage"
-                class="message"
-            ></div>
-
+        <div class="status">
+            Furo:
+            <strong id="borehole">--</strong>
         </div>
-
-
-        <!-- =================================================
-             HISTORY
-             ================================================== -->
-
-        <div class="card">
-
-            <h2>Nível - Histórico</h2>
-
-            <canvas id="chart"></canvas>
-
-        </div>
-
-
-        <!-- =================================================
-             EVENTS
-             ================================================== -->
-
-        <div class="card">
-
-            <h2>Eventos</h2>
-
-            <div id="events"></div>
-
-        </div>
-
-
     </div>
+
+
+    <!-- METRICS -->
+
+    <div class="card">
+        <h2>📊 Métricas</h2>
+
+        <div class="metric-grid">
+
+            <div class="metric">
+                <div class="metric-label">
+                    Ciclos rega
+                </div>
+
+                <div
+                    id="irrigationCycles"
+                    class="metric-value"
+                >
+                    --
+                </div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">
+                    Tempo rega
+                </div>
+
+                <div
+                    id="irrigationRuntime"
+                    class="metric-value"
+                >
+                    --
+                </div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">
+                    Ciclos furo
+                </div>
+
+                <div
+                    id="boreholeCycles"
+                    class="metric-value"
+                >
+                    --
+                </div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">
+                    Tempo furo
+                </div>
+
+                <div
+                    id="boreholeRuntime"
+                    class="metric-value"
+                >
+                    --
+                </div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">
+                    Nível mínimo
+                </div>
+
+                <div
+                    id="minLevel"
+                    class="metric-value"
+                >
+                    --
+                </div>
+            </div>
+
+            <div class="metric">
+                <div class="metric-label">
+                    Nível máximo
+                </div>
+
+                <div
+                    id="maxLevel"
+                    class="metric-value"
+                >
+                    --
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+
+    <!-- PUMP -->
+
+    <div class="card">
+        <h2>💦 Bomba de Rega</h2>
+
+        <button
+            class="success"
+            onclick="commandPump('ligar')"
+        >
+            FORÇAR LIGAR
+        </button>
+
+        <button
+            class="danger"
+            onclick="commandPump('parar')"
+        >
+            PARAR
+        </button>
+
+        <button
+            onclick="commandPump('auto')"
+        >
+            🤖 AUTO
+        </button>
+
+        <div
+            id="pumpMessage"
+            class="message"
+        ></div>
+    </div>
+
+
+    <!-- BOREHOLE -->
+
+    <div class="card">
+        <h2>⚡ Furo</h2>
+
+        <button
+            class="success"
+            onclick="commandBorehole('ligar')"
+        >
+            LIGAR FURO
+        </button>
+
+        <button
+            class="danger"
+            onclick="commandBorehole('parar')"
+        >
+            PARAR FURO
+        </button>
+
+        <div
+            id="boreholeMessage"
+            class="message"
+        ></div>
+    </div>
+
+
+    <!-- SYSTEM MODE -->
+
+    <div class="card">
+        <h2>🤖 Modo do Sistema</h2>
+
+        <button
+            id="modeAuto"
+            onclick="commandMode('AUTO')"
+        >
+            AUTOMÁTICO
+        </button>
+
+        <button
+            id="modeManualOn"
+            class="success"
+            onclick="commandMode('MANUAL_ON')"
+        >
+            MANUAL ON
+        </button>
+
+        <button
+            id="modeManualOff"
+            class="danger"
+            onclick="commandMode('MANUAL_OFF')"
+        >
+            MANUAL OFF
+        </button>
+
+        <div
+            id="modeMessage"
+            class="message"
+        ></div>
+    </div>
+
+
+    <!-- GRAPH -->
+
+    <div class="card wide">
+        <h2>📈 Histórico do Nível</h2>
+
+        <canvas id="chart"></canvas>
+    </div>
+
+
+    <!-- EVENTS -->
+
+    <div class="card wide">
+        <h2>📝 Eventos</h2>
+
+        <div id="events"></div>
+    </div>
+
+</div>
+
+
+<div class="section-title">
+    Configuração
+</div>
+
+
+<div class="grid">
+
+    <!-- TANK -->
+
+    <div class="card">
+        <h2>📐 Depósito</h2>
+
+        <div class="form-grid">
+
+            <div>
+                <label>Fundo</label>
+
+                <input
+                    id="cfgFundo"
+                    type="number"
+                    step="0.01"
+                >
+            </div>
+
+            <div>
+                <label>Limite</label>
+
+                <input
+                    id="cfgLimite"
+                    type="number"
+                    step="0.01"
+                >
+            </div>
+
+            <div>
+                <label>Largura</label>
+
+                <input
+                    id="cfgLargura"
+                    type="number"
+                    step="0.01"
+                >
+            </div>
+
+            <div>
+                <label>Comprimento</label>
+
+                <input
+                    id="cfgComprimento"
+                    type="number"
+                    step="0.01"
+                >
+            </div>
+
+        </div>
+    </div>
+
+
+    <!-- IRRIGATION -->
+
+    <div class="card">
+        <h2>💦 Rega</h2>
+
+        <label>
+            Iniciar rega (%)
+        </label>
+
+        <input
+            id="cfgIrrigationStart"
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+        >
+
+        <label>
+            Parar rega (%)
+        </label>
+
+        <input
+            id="cfgIrrigationStop"
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+        >
+    </div>
+
+
+    <!-- BOREHOLE -->
+
+    <div class="card">
+        <h2>⚡ Furo</h2>
+
+        <label>
+            Nível máximo para schedule (%)
+        </label>
+
+        <input
+            id="cfgScheduledMax"
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+        >
+
+        <label>
+            Runtime normal (min)
+        </label>
+
+        <input
+            id="cfgNormalRuntime"
+            type="number"
+            min="1"
+            step="1"
+        >
+
+        <label>
+            Runtime máximo (min)
+        </label>
+
+        <input
+            id="cfgMaxRuntime"
+            type="number"
+            min="1"
+            step="1"
+        >
+
+        <label>
+            Recovery máximo (min)
+        </label>
+
+        <input
+            id="cfgMaxRecovery"
+            type="number"
+            min="1"
+            step="1"
+        >
+    </div>
+
+
+    <!-- SAFETY -->
+
+    <div class="card">
+        <h2>🛡️ Segurança</h2>
+
+        <label>
+            Nível crítico (%)
+        </label>
+
+        <input
+            id="cfgCritical"
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+        >
+
+        <label>
+            Recovery target (%)
+        </label>
+
+        <input
+            id="cfgRecovery"
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+        >
+
+        <button
+            class="success"
+            onclick="saveConfig()"
+        >
+            GUARDAR CONFIGURAÇÃO
+        </button>
+
+        <div
+            id="configMessage"
+            class="message"
+        ></div>
+    </div>
+
+
+    <!-- SCHEDULE -->
+
+    <div class="card">
+        <h2>🕐 Horários do Furo</h2>
+
+        <label>
+            Horários separados por vírgulas
+        </label>
+
+        <input
+            id="cfgHours"
+            type="text"
+            placeholder="3,6,11,15,18,23"
+        >
+
+        <button
+            onclick="saveSchedule()"
+        >
+            GUARDAR HORÁRIOS
+        </button>
+
+        <div
+            id="scheduleMessage"
+            class="message"
+        ></div>
+    </div>
+
+
+    <!-- MOCK -->
+
+    <div class="card">
+        <h2>🧪 Mock</h2>
+
+        <label>
+            Nível inicial (%)
+        </label>
+
+        <input
+            id="cfgMockInitial"
+            type="number"
+            min="0"
+            max="100"
+            step="1"
+        >
+
+        <label>
+            Drenagem natural (%/min)
+        </label>
+
+        <input
+            id="cfgMockNatural"
+            type="number"
+            min="0"
+            step="0.01"
+        >
+
+        <label>
+            Consumo rega (%/min)
+        </label>
+
+        <input
+            id="cfgMockIrrigation"
+            type="number"
+            min="0"
+            step="0.01"
+        >
+
+        <label>
+            Enchimento furo (%/min)
+        </label>
+
+        <input
+            id="cfgMockBorehole"
+            type="number"
+            min="0"
+            step="0.01"
+        >
+
+        <label>
+            Velocidade simulação
+        </label>
+
+        <select id="cfgMockSpeed">
+            <option value="1">1x</option>
+            <option value="5">5x</option>
+            <option value="10">10x</option>
+            <option value="60">60x</option>
+        </select>
+
+        <button
+            class="warning"
+            onclick="saveMockConfig()"
+        >
+            GUARDAR MOCK
+        </button>
+
+        <div
+            id="mockMessage"
+            class="message"
+        ></div>
+    </div>
+
+</div>
 
 
 <script>
 
 let chart = null;
 
+let previousLevel = null;
+let previousLevelTime = null;
+
 
 // ============================================================
 // API
 // ============================================================
 
-async function api(url, options = {}) {
-
+async function api(
+    url,
+    options = {}
+) {
     const response = await fetch(
         url,
         {
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type":
+                    "application/json"
             },
             ...options
         }
@@ -492,12 +962,11 @@ async function api(url, options = {}) {
     try {
         data = await response.json();
     }
-    catch (error) {
+    catch {
         data = {};
     }
 
     if (!response.ok) {
-
         throw new Error(
             data.error ||
             `HTTP ${response.status}`
@@ -517,9 +986,10 @@ function showMessage(
     message,
     type = ""
 ) {
-
     const element =
-        document.getElementById(elementId);
+        document.getElementById(
+            elementId
+        );
 
     element.innerText = message;
 
@@ -535,12 +1005,9 @@ function showMessage(
 
         setTimeout(
             () => {
-
                 element.innerText = "";
-
                 element.className =
                     "message";
-
             },
             4000
         );
@@ -552,8 +1019,9 @@ function showMessage(
 // CONNECTION
 // ============================================================
 
-function updateConnectionStatus(connected) {
-
+function updateConnectionStatus(
+    connected
+) {
     const dot =
         document.getElementById(
             "connectionDot"
@@ -588,10 +1056,13 @@ function updateConnectionStatus(connected) {
 // HEALTH
 // ============================================================
 
-function updateHealthDisplay(health) {
-
+function updateHealthDisplay(
+    health
+) {
     const element =
-        document.getElementById("health");
+        document.getElementById(
+            "health"
+        );
 
     element.classList.remove(
         "health-ok",
@@ -600,31 +1071,27 @@ function updateHealthDisplay(health) {
     );
 
     const normalized =
-        String(health || "")
-            .toUpperCase();
+        String(
+            health || ""
+        ).toUpperCase();
 
     if (
         normalized === "ONLINE" ||
         normalized === "OK"
     ) {
-
         element.classList.add(
             "health-ok"
         );
-
     }
     else if (
         normalized === "OFFLINE" ||
-        normalized === "ERROR"
+        normalized.includes("ERROR")
     ) {
-
         element.classList.add(
             "health-error"
         );
-
     }
     else {
-
         element.classList.add(
             "health-warning"
         );
@@ -641,20 +1108,22 @@ async function updateStatus() {
     try {
 
         const data =
-            await api("/api/status");
-
-
-        // ----------------------------------------------------
-        // WATER
-        // ----------------------------------------------------
+            await api(
+                "/api/status"
+            );
 
         const percentage =
             Number(data.pct);
 
-        document.getElementById(
-            "level"
-        ).innerText =
-            Number.isFinite(percentage)
+        const levelElement =
+            document.getElementById(
+                "level"
+            );
+
+        levelElement.innerText =
+            Number.isFinite(
+                percentage
+            )
                 ? `${percentage.toFixed(1)}%`
                 : "--";
 
@@ -666,71 +1135,71 @@ async function updateStatus() {
             "liters"
         ).innerText =
             Number.isFinite(liters)
-                ? Math.round(liters)
+                ? liters.toFixed(1)
                 : "--";
 
-
-        // ----------------------------------------------------
-        // STATES
-        // ----------------------------------------------------
 
         document.getElementById(
             "borehole"
         ).innerText =
-            data.estado_furo || "--";
+            data.estado_furo ||
+            "--";
 
 
         document.getElementById(
             "pump"
         ).innerText =
-            data.estado_rega || "--";
+            data.estado_rega ||
+            "--";
 
 
         document.getElementById(
             "mode"
         ).innerText =
-            data.modo || "--";
+            data.modo ||
+            "--";
 
-
-        // ----------------------------------------------------
-        // HEALTH
-        // ----------------------------------------------------
 
         document.getElementById(
             "health"
         ).innerText =
-            data.health || "UNKNOWN";
+            data.health ||
+            "UNKNOWN";
 
         updateHealthDisplay(
             data.health
         );
 
 
-        // ----------------------------------------------------
-        // MQTT CONNECTION
-        // ----------------------------------------------------
+        document.getElementById(
+            "mqttStatus"
+        ).innerText =
+            data.mqtt_connected
+                ? "CONNECTED"
+                : "DISCONNECTED";
+
 
         updateConnectionStatus(
-            Boolean(data.mqtt_connected)
+            Boolean(
+                data.mqtt_connected
+            )
         );
 
-
-        // ----------------------------------------------------
-        // LAST UPDATE
-        // ----------------------------------------------------
 
         document.getElementById(
             "lastUpdate"
         ).innerText =
-            data.last_update || "--";
+            data.last_update ||
+            "--";
 
-
-        // ----------------------------------------------------
-        // MODE BUTTON
-        // ----------------------------------------------------
 
         updateModeButtons(
             data.modo
+        );
+
+
+        updateTrend(
+            percentage
         );
 
     }
@@ -749,10 +1218,465 @@ async function updateStatus() {
 
 
 // ============================================================
-// PUMP
+// TREND
 // ============================================================
 
-async function commandPump(action) {
+function updateTrend(level) {
+
+    if (!Number.isFinite(level)) {
+        return;
+    }
+
+    const element =
+        document.getElementById(
+            "trend"
+        );
+
+    if (
+        previousLevel === null ||
+        previousLevelTime === null
+    ) {
+        previousLevel = level;
+        previousLevelTime =
+            Date.now();
+
+        element.innerText =
+            "Sem tendência ainda";
+
+        return;
+    }
+
+    const now = Date.now();
+
+    const minutes =
+        (
+            now
+            - previousLevelTime
+        ) / 60000;
+
+    if (minutes <= 0) {
+        return;
+    }
+
+    const change =
+        level
+        - previousLevel;
+
+    const per10Minutes =
+        change
+        / minutes
+        * 10;
+
+    if (
+        Math.abs(
+            per10Minutes
+        ) < 0.05
+    ) {
+
+        element.className =
+            "sub-value trend-neutral";
+
+        element.innerText =
+            "→ Estável";
+
+    }
+    else if (
+        per10Minutes > 0
+    ) {
+
+        element.className =
+            "sub-value trend-up";
+
+        element.innerText =
+            `↑ +${per10Minutes.toFixed(2)}% / 10 min`;
+
+    }
+    else {
+
+        element.className =
+            "sub-value trend-down";
+
+        element.innerText =
+            `↓ ${per10Minutes.toFixed(2)}% / 10 min`;
+    }
+
+    previousLevel = level;
+    previousLevelTime = now;
+}
+
+
+// ============================================================
+// CONFIG
+// ============================================================
+
+async function updateConfig() {
+    try {
+        const response = await api("/api/config");
+
+        const config = response.config || response;
+
+        console.log("Config received:", config);
+
+        document.getElementById("cfgFundo").value =
+            config.fundo ?? "";
+
+        document.getElementById("cfgLimite").value =
+            config.limite ?? "";
+
+        document.getElementById("cfgLargura").value =
+            config.largura ?? "";
+
+        document.getElementById("cfgComprimento").value =
+            config.comprimento ?? "";
+
+        document.getElementById("cfgIrrigationStart").value =
+            config.irrigation_start_level ?? "";
+
+        document.getElementById("cfgIrrigationStop").value =
+            config.irrigation_stop_level ?? "";
+
+        document.getElementById("cfgCritical").value =
+            config.critical_level ?? "";
+
+        document.getElementById("cfgRecovery").value =
+            config.recovery_target ?? "";
+
+        document.getElementById("cfgScheduledMax").value =
+            config.scheduled_borehole_max_level ?? "";
+
+        document.getElementById("cfgNormalRuntime").value =
+            config.normal_borehole_runtime_minutes ?? "";
+
+        document.getElementById("cfgMaxRuntime").value =
+            config.max_borehole_runtime_minutes ?? "";
+
+        document.getElementById("cfgMaxRecovery").value =
+            config.max_recovery_minutes ?? "";
+
+        document.getElementById("cfgHours").value =
+            Array.isArray(config.horas)
+                ? config.horas.join(",")
+                : "";
+
+        document.getElementById("cfgMockInitial").value =
+            config.mock_initial_level ?? "";
+
+        document.getElementById("cfgMockNatural").value =
+            config.mock_natural_drain_per_minute ?? "";
+
+        document.getElementById("cfgMockIrrigation").value =
+            config.mock_irrigation_drain_per_minute ?? "";
+
+        document.getElementById("cfgMockBorehole").value =
+            config.mock_borehole_fill_per_minute ?? "";
+
+        document.getElementById("cfgMockSpeed").value =
+            config.mock_simulation_speed ?? "1";
+
+        const critical = Number(
+            config.critical_level
+        );
+
+        const irrigationStop = Number(
+            config.irrigation_stop_level
+        );
+
+        const irrigationStart = Number(
+            config.irrigation_start_level
+        );
+
+        const recovery = Number(
+            config.recovery_target
+        );
+
+        document.getElementById("criticalLevel").innerText =
+            Number.isFinite(critical)
+                ? `${critical.toFixed(0)}%`
+                : "--";
+
+        document.getElementById("irrigationStop").innerText =
+            Number.isFinite(irrigationStop)
+                ? `${irrigationStop.toFixed(0)}%`
+                : "--";
+
+        document.getElementById("irrigationStart").innerText =
+            Number.isFinite(irrigationStart)
+                ? `${irrigationStart.toFixed(0)}%`
+                : "--";
+
+        document.getElementById("recoveryTarget").innerText =
+            Number.isFinite(recovery)
+                ? `${recovery.toFixed(0)}%`
+                : "--";
+
+    } catch (error) {
+        console.error(
+            "Config error:",
+            error
+        );
+    }
+}
+
+
+// ============================================================
+// SAVE CONFIG
+// ============================================================
+
+async function saveConfig() {
+
+    try {
+
+        const data = {
+
+            fundo:
+                Number(
+                    document.getElementById(
+                        "cfgFundo"
+                    ).value
+                ),
+
+            limite:
+                Number(
+                    document.getElementById(
+                        "cfgLimite"
+                    ).value
+                ),
+
+            largura:
+                Number(
+                    document.getElementById(
+                        "cfgLargura"
+                    ).value
+                ),
+
+            comprimento:
+                Number(
+                    document.getElementById(
+                        "cfgComprimento"
+                    ).value
+                ),
+
+            irrigation_start_level:
+                Number(
+                    document.getElementById(
+                        "cfgIrrigationStart"
+                    ).value
+                ),
+
+            irrigation_stop_level:
+                Number(
+                    document.getElementById(
+                        "cfgIrrigationStop"
+                    ).value
+                ),
+
+            critical_level:
+                Number(
+                    document.getElementById(
+                        "cfgCritical"
+                    ).value
+                ),
+
+            recovery_target:
+                Number(
+                    document.getElementById(
+                        "cfgRecovery"
+                    ).value
+                ),
+
+            scheduled_borehole_max_level:
+                Number(
+                    document.getElementById(
+                        "cfgScheduledMax"
+                    ).value
+                ),
+
+            normal_borehole_runtime_minutes:
+                Number(
+                    document.getElementById(
+                        "cfgNormalRuntime"
+                    ).value
+                ),
+
+            max_borehole_runtime_minutes:
+                Number(
+                    document.getElementById(
+                        "cfgMaxRuntime"
+                    ).value
+                ),
+
+            max_recovery_minutes:
+                Number(
+                    document.getElementById(
+                        "cfgMaxRecovery"
+                    ).value
+                )
+        };
+
+        await api(
+            "/api/config",
+            {
+                method: "POST",
+                body: JSON.stringify(data)
+            }
+        );
+
+        showMessage(
+            "configMessage",
+            "Configuração guardada.",
+            "success"
+        );
+
+        await updateConfig();
+
+    }
+    catch (error) {
+
+        showMessage(
+            "configMessage",
+            `Erro: ${error.message}`,
+            "error"
+        );
+    }
+}
+
+
+// ============================================================
+// SAVE SCHEDULE
+// ============================================================
+
+async function saveSchedule() {
+
+    try {
+
+        const raw =
+            document.getElementById(
+                "cfgHours"
+            ).value;
+
+        const hours =
+            raw
+                .split(",")
+                .map(
+                    value =>
+                        Number(
+                            value.trim()
+                        )
+                )
+                .filter(
+                    value =>
+                        Number.isInteger(
+                            value
+                        )
+                );
+
+        await api(
+            "/api/config",
+            {
+                method: "POST",
+                body: JSON.stringify({
+                    horas: hours
+                })
+            }
+        );
+
+        showMessage(
+            "scheduleMessage",
+            "Horários guardados.",
+            "success"
+        );
+
+    }
+    catch (error) {
+
+        showMessage(
+            "scheduleMessage",
+            `Erro: ${error.message}`,
+            "error"
+        );
+    }
+}
+
+
+// ============================================================
+// MOCK CONFIG
+// ============================================================
+
+async function saveMockConfig() {
+
+    try {
+
+        const data = {
+
+            mock_initial_level:
+                Number(
+                    document.getElementById(
+                        "cfgMockInitial"
+                    ).value
+                ),
+
+            mock_natural_drain_per_minute:
+                Number(
+                    document.getElementById(
+                        "cfgMockNatural"
+                    ).value
+                ),
+
+            mock_irrigation_drain_per_minute:
+                Number(
+                    document.getElementById(
+                        "cfgMockIrrigation"
+                    ).value
+                ),
+
+            mock_borehole_fill_per_minute:
+                Number(
+                    document.getElementById(
+                        "cfgMockBorehole"
+                    ).value
+                ),
+
+            mock_simulation_speed:
+                Number(
+                    document.getElementById(
+                        "cfgMockSpeed"
+                    ).value
+                )
+        };
+
+        await api(
+            "/api/config",
+            {
+                method: "POST",
+                body: JSON.stringify(data)
+            }
+        );
+
+        showMessage(
+            "mockMessage",
+            "Mock atualizado.",
+            "success"
+        );
+
+    }
+    catch (error) {
+
+        showMessage(
+            "mockMessage",
+            `Erro: ${error.message}`,
+            "error"
+        );
+    }
+}
+
+
+// ============================================================
+// COMMAND PUMP
+// ============================================================
+
+async function commandPump(
+    action
+) {
 
     try {
 
@@ -786,11 +1710,6 @@ async function commandPump(action) {
     }
     catch (error) {
 
-        console.error(
-            "Pump command error:",
-            error
-        );
-
         showMessage(
             "pumpMessage",
             `Erro: ${error.message}`,
@@ -801,10 +1720,12 @@ async function commandPump(action) {
 
 
 // ============================================================
-// BOREHOLE
+// COMMAND BOREHOLE
 // ============================================================
 
-async function commandBorehole(action) {
+async function commandBorehole(
+    action
+) {
 
     try {
 
@@ -838,11 +1759,6 @@ async function commandBorehole(action) {
     }
     catch (error) {
 
-        console.error(
-            "Borehole command error:",
-            error
-        );
-
         showMessage(
             "boreholeMessage",
             `Erro: ${error.message}`,
@@ -853,10 +1769,12 @@ async function commandBorehole(action) {
 
 
 // ============================================================
-// SYSTEM MODE
+// COMMAND MODE
 // ============================================================
 
-async function commandMode(mode) {
+async function commandMode(
+    mode
+) {
 
     try {
 
@@ -890,11 +1808,6 @@ async function commandMode(mode) {
     }
     catch (error) {
 
-        console.error(
-            "Mode command error:",
-            error
-        );
-
         showMessage(
             "modeMessage",
             `Erro: ${error.message}`,
@@ -908,24 +1821,30 @@ async function commandMode(mode) {
 // MODE BUTTONS
 // ============================================================
 
-function updateModeButtons(mode) {
+function updateModeButtons(
+    mode
+) {
 
     const buttons = [
-        document.getElementById("modeAuto"),
-        document.getElementById("modeManualOn"),
-        document.getElementById("modeManualOff")
+        document.getElementById(
+            "modeAuto"
+        ),
+
+        document.getElementById(
+            "modeManualOn"
+        ),
+
+        document.getElementById(
+            "modeManualOff"
+        )
     ];
 
     buttons.forEach(
-        button => {
-
+        button =>
             button.classList.remove(
                 "mode-active"
-            );
-
-        }
+            )
     );
-
 
     if (mode === "AUTO") {
 
@@ -936,7 +1855,9 @@ function updateModeButtons(mode) {
         );
 
     }
-    else if (mode === "MANUAL_ON") {
+    else if (
+        mode === "MANUAL_ON"
+    ) {
 
         document.getElementById(
             "modeManualOn"
@@ -945,7 +1866,9 @@ function updateModeButtons(mode) {
         );
 
     }
-    else if (mode === "MANUAL_OFF") {
+    else if (
+        mode === "MANUAL_OFF"
+    ) {
 
         document.getElementById(
             "modeManualOff"
@@ -953,6 +1876,95 @@ function updateModeButtons(mode) {
             "mode-active"
         );
     }
+}
+
+
+// ============================================================
+// METRICS
+// ============================================================
+
+async function updateMetrics() {
+
+    try {
+
+        const data =
+            await api(
+                "/api/metrics"
+            );
+
+        document.getElementById(
+            "irrigationCycles"
+        ).innerText =
+            data.irrigation_cycles
+            ?? 0;
+
+        document.getElementById(
+            "boreholeCycles"
+        ).innerText =
+            data.borehole_cycles
+            ?? 0;
+
+        document.getElementById(
+            "irrigationRuntime"
+        ).innerText =
+            formatMinutes(
+                data.irrigation_runtime_seconds
+                ?? 0
+            );
+
+        document.getElementById(
+            "boreholeRuntime"
+        ).innerText =
+            formatMinutes(
+                data.borehole_runtime_seconds
+                ?? 0
+            );
+
+        document.getElementById(
+            "minLevel"
+        ).innerText =
+            `${Number(
+                data.min_level ?? 0
+            ).toFixed(1)}%`;
+
+        document.getElementById(
+            "maxLevel"
+        ).innerText =
+            `${Number(
+                data.max_level ?? 0
+            ).toFixed(1)}%`;
+
+    }
+    catch (error) {
+
+        console.error(
+            "Metrics error:",
+            error
+        );
+    }
+}
+
+
+function formatMinutes(
+    seconds
+) {
+
+    const minutes =
+        Math.floor(
+            Number(seconds) / 60
+        );
+
+    const hours =
+        Math.floor(
+            minutes / 60
+        );
+
+    if (hours > 0) {
+
+        return `${hours}h ${minutes % 60}m`;
+    }
+
+    return `${minutes}m`;
 }
 
 
@@ -965,51 +1977,55 @@ async function updateHistory() {
     try {
 
         const data =
-            await api("/api/historico");
-
+            await api(
+                "/api/historico"
+            );
 
         const labels =
             data.map(
                 x => x.hora
             );
 
-
         const values =
             data.map(
                 x => Number(x.val)
             );
-
 
         if (!chart) {
 
             chart =
                 new Chart(
                     document
-                        .getElementById("chart")
+                        .getElementById(
+                            "chart"
+                        )
                         .getContext("2d"),
 
                     {
                         type: "line",
 
                         data: {
+
                             labels,
 
-                            datasets: [{
-                                label:
-                                    "Nível (%)",
+                            datasets: [
+                                {
+                                    label:
+                                        "Nível (%)",
 
-                                data:
-                                    values,
+                                    data:
+                                        values,
 
-                                borderWidth:
-                                    2,
+                                    borderWidth:
+                                        2,
 
-                                tension:
-                                    0.3,
+                                    tension:
+                                        0.3,
 
-                                pointRadius:
-                                    2
-                            }]
+                                    pointRadius:
+                                        2
+                                }
+                            ]
                         },
 
                         options: {
@@ -1017,21 +2033,11 @@ async function updateHistory() {
                             responsive:
                                 true,
 
-                            maintainAspectRatio:
-                                true,
-
                             scales: {
 
                                 y: {
                                     min: 0,
                                     max: 100
-                                }
-                            },
-
-                            plugins: {
-
-                                legend: {
-                                    display: true
                                 }
                             }
                         }
@@ -1070,38 +2076,24 @@ async function updateEvents() {
     try {
 
         const data =
-            await api("/api/eventos");
-
+            await api(
+                "/api/eventos"
+            );
 
         const container =
             document.getElementById(
                 "events"
             );
 
-
         container.innerHTML = "";
-
 
         if (!data.length) {
 
-            const empty =
-                document.createElement(
-                    "div"
-                );
-
-            empty.className =
-                "event";
-
-            empty.innerText =
+            container.innerText =
                 "Sem eventos.";
-
-            container.appendChild(
-                empty
-            );
 
             return;
         }
-
 
         data.forEach(
             event => {
@@ -1162,7 +2154,6 @@ async function updateEvents() {
                     message
                 );
 
-
                 container.appendChild(
                     element
                 );
@@ -1181,29 +2172,40 @@ async function updateEvents() {
 
 
 // ============================================================
-// INITIALIZATION
+// UPDATE ALL
 // ============================================================
 
 async function updateAll() {
 
-    await updateStatus();
-
-    await updateHistory();
-
-    await updateEvents();
+    await Promise.all([
+        updateStatus(),
+        updateConfig(),
+        updateMetrics(),
+        updateHistory(),
+        updateEvents()
+    ]);
 }
 
+
+// ============================================================
+// START
+// ============================================================
 
 updateAll();
 
 
 // ============================================================
-// REFRESH INTERVALS
+// REFRESH
 // ============================================================
 
 setInterval(
     updateStatus,
     3000
+);
+
+setInterval(
+    updateMetrics,
+    5000
 );
 
 setInterval(

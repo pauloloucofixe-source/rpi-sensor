@@ -5,118 +5,11 @@ import signal
 import sqlite3
 import threading
 import time
-from datetime import datetime, timedelta
+from copy import deepcopy
+from datetime import datetime
 from statistics import median
 
 import paho.mqtt.client as mqtt
-import requests
-
-
-# ============================================================
-# CONFIGURATION
-# ============================================================
-
-MQTT_HOST = os.getenv("MQTT_HOST", "mosquitto")
-MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
-
-# TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
-# TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
-
-DB_PATH = os.getenv("DB_PATH", "/data/mina.db")
-
-MOCK_SENSOR = os.getenv("MOCK_SENSOR", "false").lower() in (
-    "1",
-    "true",
-    "yes",
-    "on",
-)
-
-
-# ============================================================
-# GPIO CONFIGURATION
-# ============================================================
-
-SENSOR_ECHO = 24
-SENSOR_TRIGGER = 23
-
-VALVE_GPIO = 17
-IRRIGATION_PUMP_GPIO = 27
-
-
-# ============================================================
-# WATER LEVEL CONFIGURATION
-# ============================================================
-
-CRITICAL_LEVEL = 10.0
-PUMP_MIN_LEVEL = 13.0
-RECOVERY_TARGET = 20.0
-
-MAX_RECOVERY_MINUTES = 120
-NORMAL_BOREHOLE_RUNTIME_MINUTES = 10
-MAX_BOREHOLE_RUNTIME_MINUTES = 30
-
-LOOP_INTERVAL_SECONDS = 2
-SENSOR_SAMPLES = 5
-
-MIN_SENSOR_DISTANCE = 0.02
-MAX_SENSOR_DISTANCE = 3.0
-
-
-# ============================================================
-# MOCK SENSOR CONFIGURATION
-# ============================================================
-
-# Starting water level in percentage.
-MOCK_INITIAL_LEVEL = float(os.getenv("MOCK_INITIAL_LEVEL", "50"))
-
-# Natural water consumption / loss.
-# Percentage points per minute.
-MOCK_NATURAL_DRAIN_PER_MINUTE = float(
-    os.getenv("MOCK_NATURAL_DRAIN_PER_MINUTE", "0.15")
-)
-
-# Borehole filling rate.
-# Percentage points per minute.
-MOCK_BOREHOLE_FILL_PER_MINUTE = float(
-    os.getenv("MOCK_BOREHOLE_FILL_PER_MINUTE", "2.0")
-)
-
-# Irrigation pump draining rate.
-# Percentage points per minute.
-MOCK_IRRIGATION_DRAIN_PER_MINUTE = float(
-    os.getenv("MOCK_IRRIGATION_DRAIN_PER_MINUTE", "1.0")
-)
-
-
-# ============================================================
-# MQTT TOPICS
-# ============================================================
-
-TOPIC_LEVEL = "mina/water/level"
-TOPIC_LITERS = "mina/water/liters"
-
-TOPIC_PUMP_STATUS = "mina/pump/status"
-TOPIC_BOREHOLE_STATUS = "mina/borehole/status"
-
-TOPIC_SYSTEM_MODE = "mina/system/mode"
-TOPIC_HEALTH = "mina/system/health"
-
-TOPIC_PUMP_COMMAND = "mina/pump/command"
-TOPIC_BOREHOLE_COMMAND = "mina/borehole/command"
-TOPIC_SYSTEM_MODE_COMMAND = "mina/system/mode/command"
-
-
-# ============================================================
-# DEFAULT PHYSICAL CONFIGURATION
-# ============================================================
-
-DEFAULT_CONFIG = {
-    "fundo": 0.35,
-    "limite": 0.20,
-    "largura": 0.15,
-    "comprimento": 0.15,
-    "horas": [3, 6, 11, 15, 18, 23],
-}
 
 
 # ============================================================
@@ -132,208 +25,255 @@ logger = logging.getLogger("mina-controller")
 
 
 # ============================================================
+# ENVIRONMENT
+# ============================================================
+
+MQTT_HOST = os.getenv("MQTT_HOST", "mosquitto")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+
+DB_PATH = os.getenv(
+    "DB_PATH",
+    "/data/mina.db",
+)
+
+MOCK_SENSOR = (
+    os.getenv("MOCK_SENSOR", "true").lower()
+    == "true"
+)
+
+LOOP_INTERVAL_SECONDS = 2
+
+CONFIG_RELOAD_INTERVAL_SECONDS = 5
+
+MQTT_RECONNECT_DELAY_SECONDS = 5
+
+
+# ============================================================
+# GPIO
+# ============================================================
+
+SENSOR_ECHO = 24
+SENSOR_TRIGGER = 23
+
+VALVE_GPIO = 17
+IRRIGATION_PUMP_GPIO = 27
+
+
+# ============================================================
+# MQTT TOPICS
+# ============================================================
+
+TOPIC_WATER_LEVEL = "mina/water/level"
+TOPIC_WATER_LITERS = "mina/water/liters"
+
+TOPIC_PUMP_STATUS = "mina/pump/status"
+TOPIC_BOREHOLE_STATUS = "mina/borehole/status"
+
+TOPIC_SYSTEM_MODE = "mina/system/mode"
+TOPIC_SYSTEM_HEALTH = "mina/system/health"
+TOPIC_SYSTEM_METRICS = "mina/system/metrics"
+
+TOPIC_PUMP_COMMAND = "mina/pump/command"
+TOPIC_BOREHOLE_COMMAND = "mina/borehole/command"
+TOPIC_MODE_COMMAND = "mina/system/mode/command"
+
+TOPIC_CONFIG_COMMAND = "mina/config/command"
+TOPIC_CONFIG_STATUS = "mina/config/status"
+
+TOPIC_SIMULATION_COMMAND = "mina/simulation/command"
+TOPIC_SIMULATION_STATUS = "mina/simulation/status"
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+DEFAULT_CONFIG = {
+    "fundo": 0.35,
+    "limite": 0.20,
+    "largura": 0.15,
+    "comprimento": 0.15,
+
+    "horas": [3, 6, 11, 15, 18, 23],
+    "scheduled_borehole_max_level": 80.0,
+
+    "irrigation_start_level": 60.0,
+    "irrigation_stop_level": 15.0,
+
+    "critical_level": 10.0,
+    "recovery_target": 20.0,
+
+    "normal_borehole_runtime_minutes": 10,
+    "max_borehole_runtime_minutes": 30,
+    "max_recovery_minutes": 120,
+
+    "measurement_interval_seconds": 60,
+
+    "mock_initial_level": 50.0,
+    "mock_natural_drain_per_minute": 0.15,
+    "mock_borehole_fill_per_minute": 2.0,
+    "mock_irrigation_drain_per_minute": 1.0,
+    "mock_simulation_speed": 1.0,
+}
+
+
+ALLOWED_CONFIG_KEYS = set(DEFAULT_CONFIG.keys())
+
+
+# ------------------------------------------------------------
+# Backwards compatibility / migration
+# ------------------------------------------------------------
+
+LEGACY_CONFIG_KEYS = {
+    "tank_fundo": "fundo",
+    "tank_limite": "limite",
+    "tank_largura": "largura",
+    "tank_comprimento": "comprimento",
+
+    "borehole_schedule": "horas",
+
+    "recovery_target_level": "recovery_target",
+
+    "borehole_runtime_minutes":
+        "normal_borehole_runtime_minutes",
+
+    "borehole_max_runtime_minutes":
+        "max_borehole_runtime_minutes",
+
+    "borehole_max_recovery_minutes":
+        "max_recovery_minutes",
+}
+
+
+# ============================================================
 # GLOBAL STATE
 # ============================================================
 
 running = True
 
-state_lock = threading.Lock()
+config = deepcopy(DEFAULT_CONFIG)
 
-pump_mode = "AUTO"
+config_lock = threading.RLock()
+db_lock = threading.RLock()
+state_lock = threading.RLock()
+
+
+current_level = None
+current_liters = None
+
+pump_active = False
+borehole_active = False
+
 system_mode = "AUTO"
 
-borehole_recovery = False
+controller_started_at = time.time()
 
-borehole_started = None
-borehole_until = None
-recovery_started = None
+last_loop_time = None
+last_measurement_time = 0
+last_config_reload = 0
 
 last_scheduled_run = None
 
-sensor_valid = True
+borehole_started_at = None
+borehole_reason = None
 
-last_sensor_error_notification = 0.0
+recovery_started_at = None
 
-last_measurement_save = 0.0
+sensor_failure_active = False
 
-mqtt_client = None
+simulation_paused = False
+simulation_sensor_error = False
 
-config = DEFAULT_CONFIG.copy()
-
-
-# ============================================================
-# MOCK SENSOR
-# ============================================================
-
-class MockDistanceSensor:
-    """
-    Simulates the ultrasonic sensor.
-
-    The sensor itself exposes a distance from the sensor to
-    the water surface, exactly like the real ultrasonic sensor.
-
-    The water level changes according to:
-      - natural drainage
-      - irrigation pump
-      - borehole filling
-    """
-
-    def __init__(self, initial_level_percentage=50.0):
-        self.level_percentage = max(
-            0.0,
-            min(100.0, initial_level_percentage),
-        )
-
-        self.last_update = time.monotonic()
-
-        logger.warning(
-            "MOCK SENSOR ENABLED - no physical GPIO sensor is being used"
-        )
-
-    def update(
-        self,
-        irrigation_pump_on=False,
-        borehole_on=False,
-    ):
-        now = time.monotonic()
-        elapsed_seconds = now - self.last_update
-        self.last_update = now
-
-        elapsed_minutes = elapsed_seconds / 60.0
-
-        change = -(
-            MOCK_NATURAL_DRAIN_PER_MINUTE
-            * elapsed_minutes
-        )
-
-        if irrigation_pump_on:
-            change -= (
-                MOCK_IRRIGATION_DRAIN_PER_MINUTE
-                * elapsed_minutes
-            )
-
-        if borehole_on:
-            change += (
-                MOCK_BOREHOLE_FILL_PER_MINUTE
-                * elapsed_minutes
-            )
-
-        self.level_percentage += change
-
-        self.level_percentage = max(
-            0.0,
-            min(100.0, self.level_percentage),
-        )
-
-    @property
-    def distance(self):
-        """
-        Convert simulated percentage into physical distance.
-
-        fundo = sensor reference point
-        limite = maximum usable water level
-        """
-
-        fundo = float(config["fundo"])
-        limite = float(config["limite"])
-
-        max_height = fundo - limite
-
-        water_height = (
-            max_height
-            * self.level_percentage
-            / 100.0
-        )
-
-        distance = fundo - water_height
-
-        return max(
-            MIN_SENSOR_DISTANCE,
-            min(MAX_SENSOR_DISTANCE, distance),
-        )
-
-    def close(self):
-        logger.info("Mock sensor closed")
+last_simulation_publish = 0
+last_mqtt_publish = 0
 
 
 # ============================================================
-# HARDWARE INITIALIZATION
+# METRICS
 # ============================================================
 
-sensor = None
-valvula_furo = None
-bomba_rega = None
+metrics = {
+    "loop_count": 0,
+    "loop_errors": 0,
+    "sensor_errors": 0,
+    "control_errors": 0,
+    "mqtt_messages": 0,
+    "measurements_saved": 0,
+    "events_saved": 0,
+
+    "pump_starts": 0,
+    "pump_stops": 0,
+
+    "borehole_starts": 0,
+    "borehole_stops": 0,
+
+    "last_loop_duration_ms": 0,
+    "max_loop_duration_ms": 0,
+
+    "last_error": None,
+    "last_error_at": None,
+}
 
 
-def initialize_hardware():
-    global sensor
-    global valvula_furo
-    global bomba_rega
-
-    if MOCK_SENSOR:
-        sensor = MockDistanceSensor(
-            initial_level_percentage=MOCK_INITIAL_LEVEL
-        )
-
-        # Mock outputs.
-        # They behave like OutputDevice from the controller's
-        # perspective but do not access GPIO.
-        valvula_furo = MockOutputDevice("borehole")
-        bomba_rega = MockOutputDevice("irrigation")
-
-        return
-
-    logger.info("Initializing real Raspberry Pi GPIO")
-
-    from gpiozero import DistanceSensor, OutputDevice
-
-    sensor = DistanceSensor(
-        echo=SENSOR_ECHO,
-        trigger=SENSOR_TRIGGER,
-        max_distance=3.0,
-    )
-
-    valvula_furo = OutputDevice(
-        VALVE_GPIO,
-        active_high=False,
-        initial_value=False,
-    )
-
-    bomba_rega = OutputDevice(
-        IRRIGATION_PUMP_GPIO,
-        active_high=False,
-        initial_value=False,
-    )
-
-    logger.info("Real GPIO initialized")
-
+# ============================================================
+# MOCK OUTPUT DEVICE
+# ============================================================
 
 class MockOutputDevice:
     def __init__(self, name):
         self.name = name
-        self._is_active = False
+        self.value = False
 
     def on(self):
-        self._is_active = True
-        logger.info("MOCK GPIO: %s ON", self.name)
+        self.value = True
+        logger.info("%s ON", self.name)
 
     def off(self):
-        self._is_active = False
-        logger.info("MOCK GPIO: %s OFF", self.name)
+        self.value = False
+        logger.info("%s OFF", self.name)
 
-    @property
-    def is_active(self):
-        return self._is_active
 
-    def close(self):
-        self.off()
+# ============================================================
+# GPIO OUTPUTS
+# ============================================================
+
+if MOCK_SENSOR:
+    valve = MockOutputDevice("Borehole valve")
+    irrigation_pump = MockOutputDevice("Irrigation pump")
+
+else:
+    try:
+        from gpiozero import OutputDevice
+
+        valve = OutputDevice(
+            VALVE_GPIO,
+            active_high=True,
+            initial_value=False,
+        )
+
+        irrigation_pump = OutputDevice(
+            IRRIGATION_PUMP_GPIO,
+            active_high=True,
+            initial_value=False,
+        )
+
+    except Exception:
+        logger.exception(
+            "Failed to initialize GPIO. "
+            "Falling back to mock outputs."
+        )
+
+        valve = MockOutputDevice("Borehole valve")
+        irrigation_pump = MockOutputDevice(
+            "Irrigation pump"
+        )
 
 
 # ============================================================
 # DATABASE
 # ============================================================
 
-def get_db():
+def db_connect():
     conn = sqlite3.connect(
         DB_PATH,
         timeout=10,
@@ -342,289 +282,975 @@ def get_db():
 
     conn.row_factory = sqlite3.Row
 
+    conn.execute(
+        "PRAGMA busy_timeout=10000"
+    )
+
     return conn
 
 
-def init_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+def serialize_config_value(value):
+    return json.dumps(value)
 
-    conn = get_db()
 
+def deserialize_config_value(value):
     try:
-        cursor = conn.cursor()
+        return json.loads(value)
+    except Exception:
+        return value
 
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS measurements (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                level REAL NOT NULL,
-                liters REAL NOT NULL
-            )
-            """
+
+# ============================================================
+# DATABASE INITIALIZATION
+# ============================================================
+
+def init_db():
+    with db_lock:
+        conn = db_connect()
+
+        try:
+            conn.execute("PRAGMA journal_mode=DELETE")
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS measurements (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    level REAL NOT NULL,
+                    liters REAL NOT NULL
+                )
+            """)
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    details TEXT
+                )
+            """)
+
+            for key, value in DEFAULT_CONFIG.items():
+                conn.execute(
+                    """
+                    INSERT INTO config(key, value)
+                    VALUES (?, ?)
+                    ON CONFLICT(key) DO NOTHING
+                    """,
+                    (
+                        key,
+                        serialize_config_value(value),
+                    ),
+                )
+
+            conn.commit()
+
+            logger.info("Database initialized")
+
+        finally:
+            conn.close()
+
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+def get_config_snapshot():
+    with config_lock:
+        return deepcopy(config)
+
+
+def validate_config(candidate):
+    if not isinstance(candidate, dict):
+        raise ValueError(
+            "Configuration must be an object"
         )
 
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT NOT NULL,
-                type TEXT NOT NULL,
-                message TEXT NOT NULL
-            )
-            """
+    missing = (
+        ALLOWED_CONFIG_KEYS
+        - set(candidate.keys())
+    )
+
+    if missing:
+        raise ValueError(
+            f"Missing configuration keys: "
+            f"{sorted(missing)}"
         )
 
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS config (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            )
-            """
+    unknown = (
+        set(candidate.keys())
+        - ALLOWED_CONFIG_KEYS
+    )
+
+    if unknown:
+        raise ValueError(
+            f"Unknown configuration keys: "
+            f"{sorted(unknown)}"
         )
 
-        conn.commit()
+    # --------------------------------------------------------
+    # Dimensions
+    # --------------------------------------------------------
 
-    finally:
-        conn.close()
+    for key in (
+        "fundo",
+        "limite",
+        "largura",
+        "comprimento",
+    ):
+        value = candidate[key]
+
+        if (
+            isinstance(value, bool)
+            or not isinstance(
+                value,
+                (int, float),
+            )
+        ):
+            raise ValueError(
+                f"{key} must be numeric"
+            )
+
+        if value < 0:
+            raise ValueError(
+                f"{key} cannot be negative"
+            )
+
+    if candidate["fundo"] <= candidate["limite"]:
+        raise ValueError(
+            "fundo must be greater than limite"
+        )
+
+    if candidate["largura"] <= 0:
+        raise ValueError(
+            "largura must be greater than zero"
+        )
+
+    if candidate["comprimento"] <= 0:
+        raise ValueError(
+            "comprimento must be greater than zero"
+        )
+
+    # --------------------------------------------------------
+    # Percentages
+    # --------------------------------------------------------
+
+    percentage_keys = (
+        "scheduled_borehole_max_level",
+        "irrigation_start_level",
+        "irrigation_stop_level",
+        "critical_level",
+        "recovery_target",
+        "mock_initial_level",
+    )
+
+    for key in percentage_keys:
+        value = candidate[key]
+
+        if (
+            isinstance(value, bool)
+            or not isinstance(
+                value,
+                (int, float),
+            )
+        ):
+            raise ValueError(
+                f"{key} must be numeric"
+            )
+
+        if not 0 <= value <= 100:
+            raise ValueError(
+                f"{key} must be between 0 and 100"
+            )
+
+    # --------------------------------------------------------
+    # Threshold relationships
+    # --------------------------------------------------------
+
+    if (
+        candidate["irrigation_stop_level"]
+        >= candidate["irrigation_start_level"]
+    ):
+        raise ValueError(
+            "irrigation_stop_level must be "
+            "lower than irrigation_start_level"
+        )
+
+    if (
+        candidate["critical_level"]
+        >= candidate["irrigation_stop_level"]
+    ):
+        raise ValueError(
+            "critical_level must be "
+            "lower than irrigation_stop_level"
+        )
+
+    if (
+        candidate["recovery_target"]
+        <= candidate["critical_level"]
+    ):
+        raise ValueError(
+            "recovery_target must be "
+            "greater than critical_level"
+        )
+
+    if (
+        candidate["scheduled_borehole_max_level"]
+        <= 0
+    ):
+        raise ValueError(
+            "scheduled_borehole_max_level "
+            "must be greater than zero"
+        )
+
+    # --------------------------------------------------------
+    # Runtime configuration
+    # --------------------------------------------------------
+
+    runtime_keys = (
+        "normal_borehole_runtime_minutes",
+        "max_borehole_runtime_minutes",
+        "max_recovery_minutes",
+        "measurement_interval_seconds",
+    )
+
+    for key in runtime_keys:
+        value = candidate[key]
+
+        if (
+            isinstance(value, bool)
+            or not isinstance(
+                value,
+                (int, float),
+            )
+        ):
+            raise ValueError(
+                f"{key} must be numeric"
+            )
+
+        if value <= 0:
+            raise ValueError(
+                f"{key} must be greater than zero"
+            )
+
+    if (
+        candidate["max_borehole_runtime_minutes"]
+        < candidate[
+            "normal_borehole_runtime_minutes"
+        ]
+    ):
+        raise ValueError(
+            "max_borehole_runtime_minutes must be "
+            "greater than or equal to "
+            "normal_borehole_runtime_minutes"
+        )
+
+    # --------------------------------------------------------
+    # Schedule
+    # --------------------------------------------------------
+
+    hours = candidate["horas"]
+
+    if not isinstance(hours, list):
+        raise ValueError(
+            "horas must be a list"
+        )
+
+    for hour in hours:
+        if (
+            isinstance(hour, bool)
+            or not isinstance(hour, int)
+        ):
+            raise ValueError(
+                "horas must contain integers"
+            )
+
+        if not 0 <= hour <= 23:
+            raise ValueError(
+                "horas values must be between 0 and 23"
+            )
+
+    # --------------------------------------------------------
+    # Mock configuration
+    # --------------------------------------------------------
+
+    mock_keys = (
+        "mock_natural_drain_per_minute",
+        "mock_borehole_fill_per_minute",
+        "mock_irrigation_drain_per_minute",
+        "mock_simulation_speed",
+    )
+
+    for key in mock_keys:
+        value = candidate[key]
+
+        if (
+            isinstance(value, bool)
+            or not isinstance(
+                value,
+                (int, float),
+            )
+        ):
+            raise ValueError(
+                f"{key} must be numeric"
+            )
+
+        if value < 0:
+            raise ValueError(
+                f"{key} cannot be negative"
+            )
+
+    if candidate["mock_simulation_speed"] <= 0:
+        raise ValueError(
+            "mock_simulation_speed must be "
+            "greater than zero"
+        )
+
+    return True
 
 
 def load_config():
     global config
 
-    conn = get_db()
+    with db_lock:
+        conn = db_connect()
 
-    try:
-        rows = conn.execute(
-            "SELECT key, value FROM config"
-        ).fetchall()
+        try:
+            rows = conn.execute(
+                """
+                SELECT key, value
+                FROM config
+                """
+            ).fetchall()
 
-        if not rows:
-            config = DEFAULT_CONFIG.copy()
+            loaded = deepcopy(
+                DEFAULT_CONFIG
+            )
 
-            for key, value in config.items():
+            migrated_keys = {}
+
+            for row in rows:
+                raw_key = row["key"]
+
+                key = LEGACY_CONFIG_KEYS.get(
+                    raw_key,
+                    raw_key,
+                )
+
+                if key not in ALLOWED_CONFIG_KEYS:
+                    continue
+
+                value = deserialize_config_value(
+                    row["value"]
+                )
+
+                loaded[key] = value
+
+                if raw_key != key:
+                    migrated_keys[
+                        raw_key
+                    ] = key
+
+            validate_config(loaded)
+
+            # ------------------------------------------------
+            # Migrate old configuration names.
+            # ------------------------------------------------
+
+            if migrated_keys:
+                logger.warning(
+                    "Migrating legacy configuration keys: %s",
+                    migrated_keys,
+                )
+
+                for old_key, new_key in (
+                    migrated_keys.items()
+                ):
+                    conn.execute(
+                        """
+                        INSERT INTO config(key, value)
+                        VALUES (?, ?)
+                        ON CONFLICT(key)
+                        DO UPDATE SET
+                            value = excluded.value
+                        """,
+                        (
+                            new_key,
+                            serialize_config_value(
+                                loaded[new_key]
+                            ),
+                        ),
+                    )
+
+                    conn.execute(
+                        """
+                        DELETE FROM config
+                        WHERE key = ?
+                        """,
+                        (old_key,),
+                    )
+
+                conn.commit()
+
+                logger.info(
+                    "Legacy configuration migrated"
+                )
+
+            with config_lock:
+                config = loaded
+
+            logger.info(
+                "Configuration loaded successfully"
+            )
+
+        finally:
+            conn.close()
+
+
+def save_config_changes(changes):
+    global config
+
+    with config_lock:
+        candidate = deepcopy(config)
+        candidate.update(changes)
+
+    validate_config(candidate)
+
+    with db_lock:
+        conn = db_connect()
+
+        try:
+            for key, value in changes.items():
+                if key not in ALLOWED_CONFIG_KEYS:
+                    raise ValueError(
+                        f"Unknown configuration key: {key}"
+                    )
+
                 conn.execute(
                     """
-                    INSERT OR REPLACE INTO config
-                    (key, value)
+                    INSERT INTO config(key, value)
                     VALUES (?, ?)
+                    ON CONFLICT(key)
+                    DO UPDATE SET
+                        value = excluded.value
                     """,
-                    (key, json.dumps(value)),
+                    (
+                        key,
+                        serialize_config_value(
+                            value
+                        ),
+                    ),
                 )
 
             conn.commit()
 
-        else:
-            config = DEFAULT_CONFIG.copy()
+        finally:
+            conn.close()
 
-            for row in rows:
-                try:
-                    config[row["key"]] = json.loads(row["value"])
-                except json.JSONDecodeError:
-                    logger.warning(
-                        "Invalid config value for %s",
-                        row["key"],
-                    )
+    with config_lock:
+        config = candidate
 
-    finally:
-        conn.close()
-
-    validate_physical_config()
-
-    logger.info("Configuration loaded: %s", config)
-
-
-def save_config():
-    conn = get_db()
-
-    try:
-        for key, value in config.items():
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO config
-                (key, value)
-                VALUES (?, ?)
-                """,
-                (key, json.dumps(value)),
-            )
-
-        conn.commit()
-
-    finally:
-        conn.close()
-
-
-def validate_physical_config():
-    fundo = float(config["fundo"])
-    limite = float(config["limite"])
-    largura = float(config["largura"])
-    comprimento = float(config["comprimento"])
-
-    if fundo <= limite:
-        raise ValueError(
-            "Invalid configuration: fundo must be greater than limite"
-        )
-
-    if largura <= 0 or comprimento <= 0:
-        raise ValueError(
-            "Invalid configuration: dimensions must be positive"
-        )
-
-    if not isinstance(config["horas"], list):
-        raise ValueError(
-            "Invalid configuration: horas must be a list"
-        )
-
-
-def save_measurement(level, liters):
-    conn = get_db()
-
-    try:
-        conn.execute(
-            """
-            INSERT INTO measurements
-            (timestamp, level, liters)
-            VALUES (?, ?, ?)
-            """,
-            (
-                datetime.now().isoformat(),
-                level,
-                liters,
-            ),
-        )
-
-        conn.commit()
-
-    finally:
-        conn.close()
-
-
-def save_event(event_type, message):
-    conn = get_db()
-
-    try:
-        conn.execute(
-            """
-            INSERT INTO events
-            (timestamp, type, message)
-            VALUES (?, ?, ?)
-            """,
-            (
-                datetime.now().isoformat(),
-                event_type,
-                message,
-            ),
-        )
-
-        conn.commit()
-
-    finally:
-        conn.close()
-
-
-def cleanup_database():
-    cutoff = (
-        datetime.now()
-        - timedelta(days=7)
-    ).isoformat()
-
-    conn = get_db()
-
-    try:
-        conn.execute(
-            "DELETE FROM measurements WHERE timestamp < ?",
-            (cutoff,),
-        )
-
-        conn.execute(
-            "DELETE FROM events WHERE timestamp < ?",
-            (cutoff,),
-        )
-
-        conn.commit()
-
-    finally:
-        conn.close()
-
-
-# ============================================================
-# TELEGRAM
-# ============================================================
-
-# def send_telegram(message):
-#     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-#         return
-
-#     url = (
-#         f"https://api.telegram.org/bot"
-#         f"{TELEGRAM_TOKEN}/sendMessage"
-#     )
-
-#     try:
-#         requests.post(
-#             url,
-#             json={
-#                 "chat_id": TELEGRAM_CHAT_ID,
-#                 "text": message,
-#             },
-#             timeout=10,
-#         )
-
-#     except requests.RequestException as exc:
-#         logger.error(
-#             "Telegram notification failed: %s",
-#             exc,
-#         )
-
-
-def alert(event_type, message):
-    logger.warning(
-        "[%s] %s",
-        event_type,
-        message,
+    save_event(
+        "CONFIG",
+        "Configuration updated",
+        changes,
     )
 
-    save_event(event_type, message)
+    publish_config_status(
+        success=True,
+        error=None,
+    )
 
-    # send_telegram(
-    #     f"[MINA] {message}"
-    # )
+    logger.info(
+        "Configuration updated: %s",
+        changes,
+    )
+
+
+def reset_config():
+    global config
+
+    validate_config(
+        DEFAULT_CONFIG
+    )
+
+    with db_lock:
+        conn = db_connect()
+
+        try:
+            for key, value in DEFAULT_CONFIG.items():
+                conn.execute(
+                    """
+                    INSERT INTO config(key, value)
+                    VALUES (?, ?)
+                    ON CONFLICT(key)
+                    DO UPDATE SET
+                        value = excluded.value
+                    """,
+                    (
+                        key,
+                        serialize_config_value(
+                            value
+                        ),
+                    ),
+                )
+
+            conn.commit()
+
+        finally:
+            conn.close()
+
+    with config_lock:
+        config = deepcopy(
+            DEFAULT_CONFIG
+        )
+
+    save_event(
+        "CONFIG",
+        "Configuration reset",
+        DEFAULT_CONFIG,
+    )
+
+    publish_config_status(
+        success=True,
+        error=None,
+    )
+
+    logger.info(
+        "Configuration reset to defaults"
+    )
+
+
+# ============================================================
+# DATABASE EVENTS
+# ============================================================
+
+def save_event(event_type, message, details=None):
+    timestamp = datetime.now().isoformat()
+
+    details_json = (
+        json.dumps(details, ensure_ascii=False)
+        if details is not None
+        else None
+    )
+
+    with db_lock:
+        conn = db_connect()
+
+        try:
+            conn.execute(
+                """
+                INSERT INTO events (
+                    timestamp,
+                    event_type,
+                    message,
+                    details
+                )
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    timestamp,
+                    event_type,
+                    message,
+                    details_json,
+                ),
+            )
+
+            conn.commit()
+
+            with state_lock:
+                metrics["events_saved"] += 1
+
+        except Exception:
+            logger.exception("Failed to save event")
+
+        finally:
+            conn.close()
+
+
+def save_measurement(
+    level,
+    liters,
+):
+    try:
+        with db_lock:
+            conn = db_connect()
+
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO measurements(
+                        timestamp,
+                        level,
+                        liters
+                    )
+                    VALUES (?, ?, ?)
+                    """,
+                    (
+                        datetime.now().isoformat(),
+                        float(level),
+                        float(liters),
+                    ),
+                )
+
+                conn.commit()
+
+                metrics[
+                    "measurements_saved"
+                ] += 1
+
+            finally:
+                conn.close()
+
+    except Exception:
+        logger.exception(
+            "Failed to save measurement"
+        )
+
+
+# ============================================================
+# WATER CALCULATIONS
+# ============================================================
+
+def calculate_liters(level_percent):
+    cfg = get_config_snapshot()
+
+    level = max(
+        0.0,
+        min(
+            100.0,
+            float(level_percent),
+        ),
+    )
+
+    usable_height = (
+        cfg["fundo"]
+        - cfg["limite"]
+    )
+
+    if usable_height <= 0:
+        return 0.0
+
+    water_height = (
+        usable_height
+        * (level / 100.0)
+    )
+
+    volume_m3 = (
+        cfg["largura"]
+        * cfg["comprimento"]
+        * water_height
+    )
+
+    return volume_m3 * 1000.0
+
+
+# ============================================================
+# MOCK SENSOR
+# ============================================================
+
+class MockSensor:
+    """
+    Simulated water-level sensor.
+
+    The level changes according to:
+
+    - natural drain
+    - borehole filling
+    - irrigation draining
+    - simulation speed
+    """
+
+    def __init__(self):
+        self.level = None
+        self.last_update = time.monotonic()
+
+        self.paused = False
+        self.sensor_error = False
+
+        self.lock = threading.RLock()
+
+        self.reset()
+
+    def reset(self):
+        cfg = get_config_snapshot()
+
+        with self.lock:
+            self.level = float(
+                cfg["mock_initial_level"]
+            )
+
+            self.last_update = (
+                time.monotonic()
+            )
+
+            self.paused = False
+            self.sensor_error = False
+
+        logger.info(
+            "Mock sensor reset: %.2f%%",
+            self.level,
+        )
+
+    def set_level(self, level):
+        with self.lock:
+            self.level = max(
+                0.0,
+                min(
+                    100.0,
+                    float(level),
+                ),
+            )
+
+            self.last_update = (
+                time.monotonic()
+            )
+
+        logger.info(
+            "Mock sensor level set to %.2f%%",
+            self.level,
+        )
+
+    def get_level(self):
+        with self.lock:
+
+            if self.sensor_error:
+                raise RuntimeError(
+                    "Simulated sensor failure"
+                )
+
+            now = time.monotonic()
+
+            elapsed_seconds = (
+                now
+                - self.last_update
+            )
+
+            self.last_update = now
+
+            if self.paused:
+                return self.level
+
+            if elapsed_seconds <= 0:
+                return self.level
+
+            cfg = get_config_snapshot()
+
+            simulation_speed = max(
+                0.0,
+                float(
+                    cfg.get(
+                        "mock_simulation_speed",
+                        1.0,
+                    )
+                ),
+            )
+
+            if simulation_speed <= 0:
+                return self.level
+
+            elapsed_minutes = (
+                elapsed_seconds / 60.0
+            ) * simulation_speed
+
+            # --------------------------------------------
+            # Natural drain
+            # --------------------------------------------
+
+            natural_drain = max(
+                0.0,
+                float(
+                    cfg.get(
+                        "mock_natural_drain_per_minute",
+                        0.15,
+                    )
+                ),
+            )
+
+            delta = (
+                -natural_drain
+                * elapsed_minutes
+            )
+
+            # --------------------------------------------
+            # Borehole filling
+            # --------------------------------------------
+
+            if borehole_active:
+                borehole_fill = max(
+                    0.0,
+                    float(
+                        cfg.get(
+                            "mock_borehole_fill_per_minute",
+                            2.0,
+                        )
+                    ),
+                )
+
+                delta += (
+                    borehole_fill
+                    * elapsed_minutes
+                )
+
+            # --------------------------------------------
+            # Irrigation draining
+            # --------------------------------------------
+
+            if pump_active:
+                irrigation_drain = max(
+                    0.0,
+                    float(
+                        cfg.get(
+                            "mock_irrigation_drain_per_minute",
+                            1.0,
+                        )
+                    ),
+                )
+
+                delta -= (
+                    irrigation_drain
+                    * elapsed_minutes
+                )
+
+            # --------------------------------------------
+            # Apply
+            # --------------------------------------------
+
+            self.level += delta
+
+            self.level = max(
+                0.0,
+                min(
+                    100.0,
+                    self.level,
+                ),
+            )
+
+            return self.level
+
+    def pause(self):
+        with self.lock:
+            self.paused = True
+            self.last_update = (
+                time.monotonic()
+            )
+
+        logger.info(
+            "Mock sensor paused"
+        )
+
+    def resume(self):
+        with self.lock:
+            self.paused = False
+            self.last_update = (
+                time.monotonic()
+            )
+
+        logger.info(
+            "Mock sensor resumed"
+        )
+
+    def set_sensor_error(self, enabled):
+        with self.lock:
+            self.sensor_error = bool(
+                enabled
+            )
+
+            self.last_update = (
+                time.monotonic()
+            )
+
+        logger.warning(
+            "Mock sensor error: %s",
+            (
+                "ENABLED"
+                if enabled
+                else "DISABLED"
+            ),
+        )
+
+    def get_status(self):
+        with self.lock:
+            return {
+                "enabled": True,
+                "paused": self.paused,
+                "sensor_error": self.sensor_error,
+                "level": round(
+                    self.level,
+                    2,
+                ),
+            }
+
+
+mock_sensor = MockSensor()
 
 
 # ============================================================
 # MQTT
 # ============================================================
 
-def mqtt_publish(topic, payload, retain=False):
-    if mqtt_client is None:
+mqtt_client = mqtt.Client(
+    mqtt.CallbackAPIVersion.VERSION2,
+    client_id="mina-controller",
+)
+
+mqtt_connected = False
+
+
+def mqtt_publish(
+    topic,
+    payload,
+    retain=False,
+):
+    global last_mqtt_publish
+
+    if not mqtt_connected:
         return False
 
     try:
-        if not mqtt_client.is_connected():
-            return False
+        if not isinstance(
+            payload,
+            str,
+        ):
+            payload = json.dumps(
+                payload
+            )
 
         result = mqtt_client.publish(
             topic,
-            str(payload),
+            payload,
             qos=1,
             retain=retain,
         )
 
-        if result.rc != mqtt.MQTT_ERR_SUCCESS:
-            logger.warning(
-                "MQTT publish failed: topic=%s rc=%s",
+        if (
+            result.rc
+            != mqtt.MQTT_ERR_SUCCESS
+        ):
+            logger.error(
+                "MQTT publish failed: "
+                "topic=%s rc=%s",
                 topic,
                 result.rc,
             )
+
             return False
+
+        last_mqtt_publish = time.time()
 
         return True
 
-    except Exception as exc:
-        logger.error(
-            "MQTT publish exception: %s",
-            exc,
+    except Exception:
+        logger.exception(
+            "MQTT publish error: %s",
+            topic,
         )
 
         return False
@@ -637,35 +1263,51 @@ def on_connect(
     reason_code,
     properties,
 ):
-    if reason_code == 0:
-        logger.info("Connected to MQTT broker")
+    global mqtt_connected
 
-        client.subscribe(
-            TOPIC_PUMP_COMMAND,
-            qos=1,
-        )
+    if reason_code.is_failure:
+        mqtt_connected = False
 
-        client.subscribe(
-            TOPIC_BOREHOLE_COMMAND,
-            qos=1,
-        )
-
-        client.subscribe(
-            TOPIC_SYSTEM_MODE_COMMAND,
-            qos=1,
-        )
-
-        mqtt_publish(
-            TOPIC_HEALTH,
-            "ONLINE",
-            retain=True,
-        )
-
-    else:
         logger.error(
             "MQTT connection failed: %s",
             reason_code,
         )
+
+        return
+
+    mqtt_connected = True
+
+    logger.info(
+        "MQTT connected"
+    )
+
+    topics = [
+        TOPIC_PUMP_COMMAND,
+        TOPIC_BOREHOLE_COMMAND,
+        TOPIC_MODE_COMMAND,
+        TOPIC_CONFIG_COMMAND,
+        TOPIC_SIMULATION_COMMAND,
+    ]
+
+    for topic in topics:
+        result, _ = client.subscribe(
+            topic,
+            qos=1,
+        )
+
+        if result != mqtt.MQTT_ERR_SUCCESS:
+            logger.error(
+                "Failed to subscribe to %s: %s",
+                topic,
+                result,
+            )
+
+    publish_state()
+    publish_health()
+    publish_metrics()
+
+    if MOCK_SENSOR:
+        publish_simulation_status()
 
 
 def on_disconnect(
@@ -675,478 +1317,750 @@ def on_disconnect(
     reason_code,
     properties,
 ):
+    global mqtt_connected
+
+    mqtt_connected = False
+
     logger.warning(
-        "Disconnected from MQTT: %s",
+        "MQTT disconnected: %s",
         reason_code,
     )
 
 
-def configure_mqtt():
-    global mqtt_client
+def on_message(
+    client,
+    userdata,
+    message,
+):
+    metrics[
+        "mqtt_messages"
+    ] += 1
 
-    mqtt_client = mqtt.Client(
-        mqtt.CallbackAPIVersion.VERSION2,
-        client_id="mina-controller",
-    )
+    topic = message.topic
 
-    mqtt_client.on_connect = on_connect
-    mqtt_client.on_disconnect = on_disconnect
-    mqtt_client.on_message = on_message
+    try:
+        payload = message.payload.decode(
+            "utf-8"
+        ).strip()
 
-    mqtt_client.will_set(
-        TOPIC_HEALTH,
-        "OFFLINE",
-        qos=1,
+        logger.info(
+            "MQTT command: %s -> %s",
+            topic,
+            payload,
+        )
+
+        if topic == TOPIC_PUMP_COMMAND:
+            handle_pump_command(
+                payload
+            )
+
+        elif topic == TOPIC_BOREHOLE_COMMAND:
+            handle_borehole_command(
+                payload
+            )
+
+        elif topic == TOPIC_MODE_COMMAND:
+            handle_mode_command(
+                payload
+            )
+
+        elif topic == TOPIC_CONFIG_COMMAND:
+            handle_config_command(
+                payload
+            )
+
+        elif topic == TOPIC_SIMULATION_COMMAND:
+            handle_simulation_command(
+                payload
+            )
+
+    except Exception as exc:
+        metrics[
+            "control_errors"
+        ] += 1
+
+        metrics[
+            "last_error"
+        ] = str(exc)
+
+        metrics[
+            "last_error_at"
+        ] = datetime.now().isoformat()
+
+        logger.exception(
+            "Failed to process MQTT message"
+        )
+
+
+# ============================================================
+# MQTT CONFIG STATUS
+# ============================================================
+
+def publish_config_status(
+    success,
+    error=None,
+):
+    payload = {
+        "success": bool(success),
+        "error": error,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    mqtt_publish(
+        TOPIC_CONFIG_STATUS,
+        payload,
         retain=True,
     )
 
 
-def connect_mqtt():
-    while running:
-        try:
-            logger.info(
-                "Connecting to MQTT %s:%s",
-                MQTT_HOST,
-                MQTT_PORT,
+def handle_config_command(payload):
+    try:
+        data = json.loads(payload)
+
+        if not isinstance(data, dict):
+            raise ValueError(
+                "Configuration payload must be an object"
             )
 
-            mqtt_client.connect(
-                MQTT_HOST,
-                MQTT_PORT,
-                keepalive=60,
-            )
+        if data.get("action") == "RESET":
+            reset_config()
+            return
 
-            mqtt_client.loop_start()
+        save_config_changes(data)
 
-            return True
+    except Exception as exc:
+        logger.exception(
+            "Configuration command failed"
+        )
 
-        except Exception as exc:
-            logger.error(
-                "MQTT connection failed: %s",
-                exc,
-            )
-
-            time.sleep(5)
-
-    return False
+        publish_config_status(
+            success=False,
+            error=str(exc),
+        )
 
 
-def on_message(client, userdata, msg):
-    global pump_mode
-    global system_mode
+# ============================================================
+# SIMULATION
+# ============================================================
+
+def publish_simulation_status():
+    status = mock_sensor.get_status()
+
+    status.update(
+        {
+            "enabled": MOCK_SENSOR,
+            "paused": simulation_paused,
+            "sensor_error": (
+                simulation_sensor_error
+            ),
+            "timestamp": datetime.now().isoformat(),
+        }
+    )
+
+    mqtt_publish(
+        TOPIC_SIMULATION_STATUS,
+        status,
+        retain=True,
+    )
+
+
+def handle_simulation_command(payload):
+    global simulation_paused
+    global simulation_sensor_error
 
     try:
-        payload = (
-            msg.payload
-            .decode("utf-8")
-            .strip()
-            .upper()
-        )
+        data = json.loads(payload)
 
-        logger.info(
-            "MQTT command: %s -> %s",
-            msg.topic,
-            payload,
-        )
-
-        if msg.topic == TOPIC_PUMP_COMMAND:
-            if payload in ("ON", "OFF", "AUTO"):
-                pump_mode = payload
-
-                save_event(
-                    "PUMP_COMMAND",
-                    f"Pump mode changed to {payload}",
-                )
-
-        elif msg.topic == TOPIC_BOREHOLE_COMMAND:
-            if payload == "ON":
-                start_borehole_manual()
-
-            elif payload == "OFF":
-                stop_borehole(
-                    reason="Manual command"
-                )
-
-        elif msg.topic == TOPIC_SYSTEM_MODE_COMMAND:
-            if payload in (
-                "AUTO",
-                "MANUAL_ON",
-                "MANUAL_OFF",
-            ):
-                system_mode = payload
-
-                save_event(
-                    "SYSTEM_MODE",
-                    f"System mode changed to {payload}",
-                )
-
-                if payload == "MANUAL_OFF":
-                    safe_all_outputs_off()
-
-    except Exception:
-        logger.exception(
-            "Error processing MQTT message"
-        )
-
-
-# ============================================================
-# SENSOR
-# ============================================================
-
-def read_sensor_distance():
-    if MOCK_SENSOR:
-        sensor.update(
-            irrigation_pump_on=bomba_rega.is_active,
-            borehole_on=valvula_furo.is_active,
-        )
-
-    samples = []
-
-    for _ in range(SENSOR_SAMPLES):
-        distance = float(sensor.distance)
-
-        if (
-            distance < MIN_SENSOR_DISTANCE
-            or distance > MAX_SENSOR_DISTANCE
+        if isinstance(
+            data,
+            str,
         ):
-            raise ValueError(
-                f"Invalid sensor distance: {distance}"
+            action = data.upper()
+            data = {
+                "action": action
+            }
+
+        action = str(
+            data.get(
+                "action",
+                "",
+            )
+        ).upper()
+
+        if action == "PAUSE":
+            simulation_paused = True
+            mock_sensor.pause()
+
+        elif action == "RESUME":
+            simulation_paused = False
+            mock_sensor.resume()
+
+        elif action == "RESET":
+            simulation_paused = False
+            simulation_sensor_error = False
+
+            mock_sensor.reset()
+
+        elif action == "SENSOR_ERROR":
+            enabled = bool(
+                data.get(
+                    "enabled",
+                    True,
+                )
             )
 
-        samples.append(distance)
+            simulation_sensor_error = (
+                enabled
+            )
 
-        if not MOCK_SENSOR:
-            time.sleep(0.05)
+            mock_sensor.set_sensor_error(
+                enabled
+            )
 
-    return median(samples)
+        elif action == "SET_LEVEL":
+            level = data.get("level")
 
+            if level is None:
+                raise ValueError(
+                    "SET_LEVEL requires level"
+                )
 
-def calculate_water_level(distance):
-    fundo = float(config["fundo"])
-    limite = float(config["limite"])
+            mock_sensor.set_level(
+                float(level)
+            )
 
-    max_height = fundo - limite
+        elif action == "SPEED":
+            speed = data.get("speed")
 
-    if max_height <= 0:
-        raise ValueError(
-            "Invalid tank geometry"
+            if speed is None:
+                raise ValueError(
+                    "SPEED requires speed"
+                )
+
+            speed = float(speed)
+
+            if speed <= 0:
+                raise ValueError(
+                    "Simulation speed must "
+                    "be greater than zero"
+                )
+
+            save_config_changes(
+                {
+                    "mock_simulation_speed": speed
+                }
+            )
+
+        else:
+            raise ValueError(
+                f"Unknown simulation action: {action}"
+            )
+
+        publish_simulation_status()
+
+    except Exception as exc:
+        logger.exception(
+            "Simulation command failed"
         )
 
-    current_height = max(
-        0.0,
-        fundo - distance,
-    )
-
-    percentage = (
-        current_height
-        / max_height
-        * 100
-    )
-
-    percentage = max(
-        0.0,
-        min(100.0, percentage),
-    )
-
-    return percentage
-
-
-def calculate_liters(level_percentage):
-    fundo = float(config["fundo"])
-    limite = float(config["limite"])
-
-    largura = float(config["largura"])
-    comprimento = float(config["comprimento"])
-
-    max_height = fundo - limite
-
-    current_height = (
-        max_height
-        * level_percentage
-        / 100.0
-    )
-
-    liters = (
-        largura
-        * comprimento
-        * current_height
-        * 1000
-    )
-
-    return max(
-        0.0,
-        liters,
-    )
+        publish_simulation_status()
 
 
 # ============================================================
 # OUTPUT CONTROL
 # ============================================================
 
-def safe_all_outputs_off():
-    global borehole_recovery
-    global borehole_started
-    global borehole_until
-    global recovery_started
+def start_pump():
+    global pump_active
 
     with state_lock:
-        bomba_rega.off()
-        valvula_furo.off()
+        if pump_active:
+            return
 
-        borehole_recovery = False
-        borehole_started = None
-        borehole_until = None
-        recovery_started = None
+        irrigation_pump.on()
+
+        pump_active = True
+
+        metrics[
+            "pump_starts"
+        ] += 1
+
+    save_event(
+        "PUMP",
+        "Irrigation pump started",
+    )
+
+    publish_state()
 
 
-def start_borehole_manual():
-    global borehole_started
-    global borehole_until
-
-    if system_mode == "MANUAL_OFF":
-        logger.warning(
-            "Ignoring borehole ON command because system is MANUAL_OFF"
-        )
-        return
-
-    if not sensor_valid:
-        logger.warning(
-            "Ignoring borehole ON command because sensor is invalid"
-        )
-        return
+def stop_pump(reason=None):
+    global pump_active
 
     with state_lock:
-        valvula_furo.on()
+        if not pump_active:
+            return
 
-        borehole_started = time.monotonic()
+        irrigation_pump.off()
 
-        borehole_until = (
-            borehole_started
-            + NORMAL_BOREHOLE_RUNTIME_MINUTES * 60
-        )
+        pump_active = False
+
+        metrics[
+            "pump_stops"
+        ] += 1
+
+    save_event(
+        "PUMP",
+        "Irrigation pump stopped",
+        {
+            "reason": reason
+        }
+        if reason
+        else None,
+    )
+
+    publish_state()
+
+def stop_borehole(reason=None):
+    global borehole_active
+    global borehole_started_at
+    global borehole_reason
+    global recovery_started_at
+
+    with state_lock:
+
+        if not borehole_active:
+            return
+
+        valve.off()
+
+        borehole_active = False
+
+        borehole_started_at = None
+        borehole_reason = None
+        recovery_started_at = None
+
+        metrics[
+            "borehole_stops"
+        ] += 1
 
     save_event(
         "BOREHOLE",
-        "Manual borehole started",
+        "Borehole stopped",
+        {
+            "reason": reason
+        }
+        if reason
+        else None,
+    )
+
+    logger.info(
+        "Borehole stopped: %s",
+        reason or "unknown",
+    )
+
+    publish_state()
+
+def start_borehole(reason="scheduled"):
+    global borehole_active
+    global borehole_started_at
+    global borehole_reason
+    global recovery_started_at
+
+    # --------------------------------------------------------
+    # Never run borehole and irrigation simultaneously.
+    # --------------------------------------------------------
+
+    if pump_active:
+        stop_pump(
+            reason="borehole start"
+        )
+
+    with state_lock:
+
+        if borehole_active:
+            return False
+
+        valve.on()
+
+        borehole_active = True
+
+        borehole_started_at = time.time()
+
+        borehole_reason = reason
+
+        if reason == "recovery":
+            recovery_started_at = time.time()
+        else:
+            recovery_started_at = None
+
+        metrics[
+            "borehole_starts"
+        ] += 1
+
+    save_event(
+        "BOREHOLE",
+        "Borehole started",
+        {
+            "reason": reason
+        },
+    )
+
+    logger.info(
+        "Borehole started: %s",
+        reason,
+    )
+
+    publish_state()
+
+    return True
+
+# ============================================================
+# MQTT COMMAND HANDLERS
+# ============================================================
+
+def handle_pump_command(payload):
+    command = str(
+        payload
+    ).strip().upper()
+
+    if command == "ON":
+        start_pump()
+
+    elif command == "OFF":
+        stop_pump(
+            reason="MQTT command"
+        )
+
+    elif command == "AUTO":
+        set_system_mode("AUTO")
+
+    else:
+        raise ValueError(
+            f"Unknown pump command: {command}"
+        )
+
+
+def handle_borehole_command(payload):
+    command = str(
+        payload
+    ).strip().upper()
+
+    if command == "ON":
+        start_borehole(
+            reason="manual MQTT command"
+        )
+
+    elif command == "OFF":
+        stop_borehole(
+            reason="MQTT command"
+        )
+
+    else:
+        raise ValueError(
+            f"Unknown borehole command: {command}"
+        )
+
+
+def set_system_mode(mode):
+    global system_mode
+
+    mode = str(
+        mode
+    ).strip().upper()
+
+    valid_modes = {
+        "AUTO",
+        "MANUAL_ON",
+        "MANUAL_OFF",
+    }
+
+    if mode not in valid_modes:
+        raise ValueError(
+            f"Invalid system mode: {mode}"
+        )
+
+    with state_lock:
+        system_mode = mode
+
+    save_event(
+        "MODE",
+        "System mode changed",
+        {
+            "mode": mode
+        },
+    )
+
+    publish_state()
+
+    logger.info(
+        "System mode: %s",
+        mode,
     )
 
 
-def start_borehole_recovery():
-    global borehole_recovery
-    global recovery_started
-    global borehole_until
+def handle_mode_command(payload):
+    command = str(
+        payload
+    ).strip().upper()
 
-    if not sensor_valid:
-        return
-
-    if system_mode == "MANUAL_OFF":
-        return
-
-    if borehole_recovery:
-        return
-
-    now = time.monotonic()
-
-    with state_lock:
-        valvula_furo.on()
-
-        borehole_recovery = True
-        recovery_started = now
-
-        borehole_until = (
-            now
-            + MAX_RECOVERY_MINUTES * 60
-        )
-
-    alert(
-        "RECOVERY",
-        (
-            "Critical water level detected. "
-            "Borehole recovery started."
-        ),
+    set_system_mode(
+        command
     )
 
 
-def stop_borehole(reason=""):
-    global borehole_recovery
-    global borehole_started
-    global borehole_until
-    global recovery_started
-
-    with state_lock:
-        valvula_furo.off()
-
-        borehole_recovery = False
-        borehole_started = None
-        borehole_until = None
-        recovery_started = None
-
-    if reason:
-        save_event(
-            "BOREHOLE",
-            f"Borehole stopped: {reason}",
-        )
-
+# ============================================================
+# IRRIGATION CONTROL
+# ============================================================
 
 def control_irrigation(level):
-    if system_mode == "MANUAL_OFF":
-        bomba_rega.off()
-        return
+    cfg = get_config_snapshot()
 
-    if pump_mode == "MANUAL_OFF":
-        bomba_rega.off()
-        return
+    critical_level = (
+        cfg["critical_level"]
+    )
 
-    # Both AUTO and MANUAL_ON are safety-gated by water level.
-    if level < PUMP_MIN_LEVEL:
-        if bomba_rega.is_active:
-            logger.warning(
-                "Water level %.2f%% below pump threshold. "
-                "Turning irrigation pump OFF.",
-                level,
+    irrigation_start = (
+        cfg["irrigation_start_level"]
+    )
+
+    irrigation_stop = (
+        cfg["irrigation_stop_level"]
+    )
+
+    # --------------------------------------------------------
+    # Critical level
+    # --------------------------------------------------------
+
+    if level <= critical_level:
+        if pump_active:
+            stop_pump(
+                reason="critical water level"
             )
 
-        bomba_rega.off()
         return
 
-    if pump_mode in ("AUTO", "MANUAL_ON"):
-        bomba_rega.on()
+    # --------------------------------------------------------
+    # Borehole active
+    # --------------------------------------------------------
+
+    if borehole_active:
+        if pump_active:
+            stop_pump(
+                reason="borehole active"
+            )
+
+        return
+
+    # --------------------------------------------------------
+    # Manual OFF
+    # --------------------------------------------------------
+
+    if system_mode == "MANUAL_OFF":
+        if pump_active:
+            stop_pump(
+                reason="manual off"
+            )
+
+        return
+
+    # --------------------------------------------------------
+    # Manual ON
+    # --------------------------------------------------------
+
+    if system_mode == "MANUAL_ON":
+        if not pump_active:
+            start_pump()
+
+        return
+
+    # --------------------------------------------------------
+    # AUTO
+    # --------------------------------------------------------
+
+    if system_mode == "AUTO":
+
+        if (
+            level >= irrigation_start
+            and not pump_active
+        ):
+            start_pump()
+
+        elif (
+            level <= irrigation_stop
+            and pump_active
+        ):
+            stop_pump(
+                reason="irrigation stop threshold"
+            )
 
 
-def control_borehole(
-    level,
-    now,
-):
+# ============================================================
+# BOREHOLE CONTROL
+# ============================================================
+
+def should_run_scheduled_borehole(level):
     global last_scheduled_run
-    global borehole_started
-    global borehole_until
 
-    if system_mode == "MANUAL_OFF":
-        stop_borehole(
-            reason="System mode MANUAL_OFF"
+    cfg = get_config_snapshot()
+
+    now = datetime.now()
+
+    current_hour = now.hour
+
+    schedule = cfg["horas"]
+
+    max_level = (
+        cfg["scheduled_borehole_max_level"]
+    )
+
+    if current_hour not in schedule:
+        return False
+
+    if level >= max_level:
+        return False
+
+    schedule_key = now.strftime(
+        "%Y-%m-%d-%H"
+    )
+
+    if last_scheduled_run == schedule_key:
+        return False
+
+    last_scheduled_run = schedule_key
+
+    return True
+
+
+def control_borehole(level):
+    global recovery_started_at
+
+    cfg = get_config_snapshot()
+
+    critical_level = float(
+        cfg["critical_level"]
+    )
+
+    recovery_target = float(
+        cfg["recovery_target"]
+    )
+
+    normal_runtime = float(
+        cfg["normal_borehole_runtime_minutes"]
+    )
+
+    max_runtime = float(
+        cfg["max_borehole_runtime_minutes"]
+    )
+
+    max_recovery = float(
+        cfg["max_recovery_minutes"]
+    )
+
+    with state_lock:
+        active = borehole_active
+        started_at = borehole_started_at
+        reason = borehole_reason
+        mode = system_mode
+
+    # ---------------------------------------------------------
+    # BOREHOLE JÁ ESTÁ LIGADO
+    # ---------------------------------------------------------
+
+    if active:
+
+        # Estado inconsistente: válvula ligada mas sem timestamp.
+        # Não alteramos o global aqui; usamos um timestamp local.
+        if started_at is None:
+            logger.warning(
+                "Borehole is active but has no start timestamp"
+            )
+
+            started_at = time.time()
+
+        runtime_minutes = (
+            time.time() - started_at
+        ) / 60.0
+
+        # -----------------------------------------------------
+        # RECOVERY
+        # -----------------------------------------------------
+
+        if reason == "recovery":
+
+            # Atingiu o nível de recuperação
+            if level >= recovery_target:
+
+                stop_borehole(
+                    reason="recovery target reached"
+                )
+
+                return
+
+            # Recovery demorou demasiado
+            if runtime_minutes >= max_recovery:
+
+                stop_borehole(
+                    reason="maximum recovery runtime"
+                )
+
+                return
+
+        # -----------------------------------------------------
+        # OPERAÇÃO NORMAL / AGENDADA
+        # -----------------------------------------------------
+
+        else:
+
+            # Tempo normal terminou
+            if runtime_minutes >= normal_runtime:
+
+                stop_borehole(
+                    reason="normal runtime reached"
+                )
+
+                return
+
+            # Limite absoluto de segurança
+            if runtime_minutes >= max_runtime:
+
+                stop_borehole(
+                    reason="maximum borehole runtime"
+                )
+
+                return
+
+        return
+
+    # ---------------------------------------------------------
+    # BOREHOLE ESTÁ DESLIGADO
+    # ---------------------------------------------------------
+
+    # Manual OFF impede qualquer arranque automático
+    if mode == "MANUAL_OFF":
+        return
+
+    # ---------------------------------------------------------
+    # RECOVERY DE NÍVEL CRÍTICO
+    # ---------------------------------------------------------
+
+    if level <= critical_level:
+
+        start_borehole(
+            reason="recovery"
         )
-        return
-
-    # --------------------------------------------------------
-    # Critical level -> recovery
-    # --------------------------------------------------------
-
-    if level <= CRITICAL_LEVEL:
-        start_borehole_recovery()
-
-    # --------------------------------------------------------
-    # Recovery currently running
-    # --------------------------------------------------------
-
-    if borehole_recovery:
-
-        if level >= RECOVERY_TARGET:
-            stop_borehole(
-                reason=(
-                    f"Recovery target reached "
-                    f"({level:.2f}%)"
-                )
-            )
-            return
-
-        if (
-            borehole_until is not None
-            and now >= borehole_until
-        ):
-            stop_borehole(
-                reason="Recovery watchdog timeout"
-            )
-
-            alert(
-                "SAFETY",
-                (
-                    "Borehole recovery stopped because "
-                    "the maximum recovery runtime was reached."
-                ),
-            )
-
-            return
 
         return
 
-    # --------------------------------------------------------
-    # Existing normal/manual run
-    # --------------------------------------------------------
+    # ---------------------------------------------------------
+    # FUNCIONAMENTO AUTOMÁTICO AGENDADO
+    # ---------------------------------------------------------
 
-    if borehole_started is not None:
+    if mode == "AUTO":
 
-        if (
-            borehole_until is not None
-            and now >= borehole_until
-        ):
-            stop_borehole(
-                reason="Normal runtime completed"
-            )
+        if should_run_scheduled_borehole(level):
 
-            return
-
-        # Absolute safety watchdog.
-        if (
-            now - borehole_started
-            >= MAX_BOREHOLE_RUNTIME_MINUTES * 60
-        ):
-            stop_borehole(
-                reason="Hard watchdog timeout"
-            )
-
-            alert(
-                "SAFETY",
-                (
-                    "Borehole stopped by hard "
-                    "30-minute watchdog."
-                ),
-            )
-
-            return
-
-        return
-
-    # --------------------------------------------------------
-    # Scheduled runs
-    # --------------------------------------------------------
-
-    current_datetime = datetime.now()
-
-    current_hour = current_datetime.hour
-
-    scheduled_hours = config.get(
-        "horas",
-        [],
-    )
-
-    schedule_key = (
-        current_datetime.date(),
-        current_hour,
-    )
-
-    if (
-        current_hour in scheduled_hours
-        and last_scheduled_run != schedule_key
-    ):
-        last_scheduled_run = schedule_key
-
-        if sensor_valid:
-            with state_lock:
-                valvula_furo.on()
-
-                borehole_started = now
-
-                borehole_until = (
-                    now
-                    + NORMAL_BOREHOLE_RUNTIME_MINUTES * 60
-                )
-
-            save_event(
-                "SCHEDULE",
-                (
-                    f"Scheduled borehole started "
-                    f"at {current_hour}:00"
-                ),
+            start_borehole(
+                reason="scheduled"
             )
 
 
@@ -1154,291 +2068,621 @@ def control_borehole(
 # SENSOR FAILURE
 # ============================================================
 
-def handle_sensor_failure(reason):
-    global sensor_valid
-    global last_sensor_error_notification
-    global borehole_recovery
-    global borehole_started
-    global borehole_until
-    global recovery_started
+def handle_sensor_failure(error):
+    global sensor_failure_active
 
-    sensor_valid = False
+    if not sensor_failure_active:
+        sensor_failure_active = True
 
-    # SAFETY FIRST
-    bomba_rega.off()
-    valvula_furo.off()
+        metrics[
+            "sensor_errors"
+        ] += 1
 
-    borehole_recovery = False
-    borehole_started = None
-    borehole_until = None
-    recovery_started = None
+        save_event(
+            "SENSOR",
+            "Water level sensor failure",
+            {
+                "error": str(error)
+            },
+        )
 
-    now = time.monotonic()
+        logger.error(
+            "Sensor failure: %s",
+            error,
+        )
 
-    # Avoid Telegram/event spam every 2 seconds.
-    if (
-        now - last_sensor_error_notification
-        >= 60
-    ):
-        last_sensor_error_notification = now
+    # Safety first.
+    stop_pump(
+        reason="sensor failure"
+    )
 
-        alert(
-            "SENSOR_ERROR",
-            (
-                "Water level sensor failure. "
-                "All pumps/valves were turned OFF. "
-                f"Reason: {reason}"
+    stop_borehole(
+        reason="sensor failure"
+    )
+
+
+def clear_sensor_failure():
+    global sensor_failure_active
+
+    if sensor_failure_active:
+        sensor_failure_active = False
+
+        save_event(
+            "SENSOR",
+            "Water level sensor recovered",
+        )
+
+        logger.info(
+            "Sensor recovered"
+        )
+
+
+# ============================================================
+# SENSOR READING
+# ============================================================
+
+def read_sensor():
+    if MOCK_SENSOR:
+        return mock_sensor.get_level()
+
+    # --------------------------------------------------------
+    # HC-SR04 / ultrasonic sensor
+    # --------------------------------------------------------
+
+    try:
+        from gpiozero import DistanceSensor
+
+        sensor = DistanceSensor(
+            echo=SENSOR_ECHO,
+            trigger=SENSOR_TRIGGER,
+            max_distance=2.0,
+        )
+
+        distance = sensor.distance
+
+        sensor.close()
+
+        cfg = get_config_snapshot()
+
+        fundo = cfg["fundo"]
+        limite = cfg["limite"]
+
+        # Distance is measured from the sensor
+        # downwards. Convert to water height.
+        water_height = (
+            fundo - distance
+        )
+
+        usable_height = (
+            fundo - limite
+        )
+
+        if usable_height <= 0:
+            raise RuntimeError(
+                "Invalid tank dimensions"
+            )
+
+        level = (
+            water_height
+            / usable_height
+        ) * 100.0
+
+        return max(
+            0.0,
+            min(
+                100.0,
+                level,
             ),
         )
+
+    except Exception:
+        raise
+
+
+def read_stable_level(samples=5):
+    readings = []
+
+    for _ in range(samples):
+        level = read_sensor()
+
+        if level is None:
+            continue
+
+        readings.append(
+            float(level)
+        )
+
+        if len(readings) < samples:
+            time.sleep(0.05)
+
+    if not readings:
+        raise RuntimeError(
+            "No valid sensor readings"
+        )
+
+    return median(readings)
 
 
 # ============================================================
 # STATE PUBLISHING
 # ============================================================
 
-def publish_state(
-    level,
-    liters,
-):
-    pump_status = (
-        "LIGADA"
-        if bomba_rega.is_active
-        else "DESLIGADA"
-    )
+def publish_state():
+    with state_lock:
+        level = current_level
+        liters = current_liters
+        pump = pump_active
+        borehole = borehole_active
+        mode = system_mode
 
-    borehole_status = (
-        "LIGADO"
-        if valvula_furo.is_active
-        else "DESLIGADO"
-    )
+    if level is not None:
+        mqtt_publish(
+            TOPIC_WATER_LEVEL,
+            {
+                "level": round(
+                    float(level),
+                    2,
+                ),
+                "timestamp": datetime.now().isoformat(),
+            },
+            retain=True,
+        )
 
-    health = (
-        "ONLINE"
-        if sensor_valid
-        else "SENSOR_ERROR"
-    )
-
-    mqtt_publish(
-        TOPIC_LEVEL,
-        f"{level:.2f}",
-        retain=True,
-    )
-
-    mqtt_publish(
-        TOPIC_LITERS,
-        f"{liters:.2f}",
-        retain=True,
-    )
+    if liters is not None:
+        mqtt_publish(
+            TOPIC_WATER_LITERS,
+            {
+                "liters": round(
+                    float(liters),
+                    3,
+                ),
+                "timestamp": datetime.now().isoformat(),
+            },
+            retain=True,
+        )
 
     mqtt_publish(
         TOPIC_PUMP_STATUS,
-        pump_status,
+        {
+            "active": pump,
+            "status": (
+                "LIGADA"
+                if pump
+                else "DESLIGADA"
+            ),
+            "timestamp": datetime.now().isoformat(),
+        },
         retain=True,
     )
 
     mqtt_publish(
         TOPIC_BOREHOLE_STATUS,
-        borehole_status,
+        {
+            "active": borehole,
+            "status": (
+                "LIGADO"
+                if borehole
+                else "DESLIGADO"
+            ),
+            "reason": borehole_reason,
+            "timestamp": datetime.now().isoformat(),
+        },
         retain=True,
     )
 
     mqtt_publish(
         TOPIC_SYSTEM_MODE,
-        system_mode,
+        {
+            "mode": mode,
+            "timestamp": datetime.now().isoformat(),
+        },
         retain=True,
     )
 
+
+def publish_health():
+    uptime = (
+        time.time()
+        - controller_started_at
+    )
+
+    if sensor_failure_active:
+        status = "SENSOR_ERROR"
+
+    elif mqtt_connected:
+        status = "ONLINE"
+
+    else:
+        status = "OFFLINE"
+
+    payload = {
+        "status": status,
+        "mqtt_connected": mqtt_connected,
+        "uptime_seconds": round(
+            uptime,
+            2,
+        ),
+        "timestamp": datetime.now().isoformat(),
+    }
+
     mqtt_publish(
-        TOPIC_HEALTH,
-        health,
+        TOPIC_SYSTEM_HEALTH,
+        payload,
+        retain=True,
+    )
+
+
+def publish_metrics():
+    with state_lock:
+        current_state = {
+            "level": current_level,
+            "liters": current_liters,
+            "pump_active": pump_active,
+            "borehole_active": borehole_active,
+            "mode": system_mode,
+        }
+
+    payload = {
+        **deepcopy(metrics),
+        "state": current_state,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+    mqtt_publish(
+        TOPIC_SYSTEM_METRICS,
+        payload,
         retain=True,
     )
 
 
 # ============================================================
-# MAIN LOOP
+# CONTROL LOOP
 # ============================================================
 
 def control_loop():
-    global sensor_valid
-    global last_measurement_save
+    global current_level
+    global current_liters
+    global last_loop_time
+    global last_measurement_time
+    global last_config_reload
+    global last_simulation_publish
+
+    logger.info(
+        "Controller loop started"
+    )
 
     while running:
-        try:
-            distance = read_sensor_distance()
 
-            level = calculate_water_level(
-                distance
-            )
+        loop_started = time.monotonic()
+
+        try:
+            # ------------------------------------------------
+            # Reload configuration periodically.
+            # ------------------------------------------------
+
+            now = time.time()
+
+            if (
+                now - last_config_reload
+                >= CONFIG_RELOAD_INTERVAL_SECONDS
+            ):
+                try:
+                    load_config()
+
+                except Exception:
+                    logger.exception(
+                        "Configuration reload failed"
+                    )
+
+                last_config_reload = now
+
+            # ------------------------------------------------
+            # Read sensor
+            # ------------------------------------------------
+
+            try:
+                level = read_stable_level()
+
+                clear_sensor_failure()
+
+            except Exception as exc:
+                handle_sensor_failure(
+                    exc
+                )
+
+                publish_health()
+
+                time.sleep(
+                    LOOP_INTERVAL_SECONDS
+                )
+
+                continue
 
             liters = calculate_liters(
                 level
             )
 
-            if not sensor_valid:
-                logger.info(
-                    "Water sensor recovered"
+            with state_lock:
+                current_level = level
+                current_liters = liters
+
+            # ------------------------------------------------
+            # Automatic control
+            # ------------------------------------------------
+
+            try:
+                control_borehole(
+                    level
                 )
 
-                sensor_valid = True
-
-                save_event(
-                    "SENSOR",
-                    "Water sensor recovered",
+                control_irrigation(
+                    level
                 )
 
-                # send_telegram(
-                #     "[MINA] Water sensor recovered."
-                # )
+            except Exception:
+                metrics[
+                    "control_errors"
+                ] += 1
 
-            now = time.monotonic()
+                logger.exception(
+                    "Control logic failed"
+                )
 
-            # --------------------------------------------
-            # Control
-            # --------------------------------------------
+            # ------------------------------------------------
+            # Publish state
+            # ------------------------------------------------
 
-            control_irrigation(level)
+            publish_state()
 
-            control_borehole(
-                level,
-                now,
+            # ------------------------------------------------
+            # Measurements
+            # ------------------------------------------------
+
+            cfg = get_config_snapshot()
+
+            measurement_interval = float(
+                cfg[
+                    "measurement_interval_seconds"
+                ]
             )
 
-            # --------------------------------------------
-            # Publish
-            # --------------------------------------------
-
-            publish_state(
-                level,
-                liters,
-            )
-
-            # --------------------------------------------
-            # Database
-            # --------------------------------------------
+            now = time.time()
 
             if (
-                time.monotonic()
-                - last_measurement_save
-                >= 900
+                now - last_measurement_time
+                >= measurement_interval
             ):
                 save_measurement(
                     level,
                     liters,
                 )
 
-                cleanup_database()
+                last_measurement_time = now
 
-                last_measurement_save = (
-                    time.monotonic()
-                )
+            # ------------------------------------------------
+            # Simulation status
+            # ------------------------------------------------
 
-            # --------------------------------------------
-            # Logging
-            # --------------------------------------------
+            if MOCK_SENSOR:
+                if (
+                    now - last_simulation_publish
+                    >= 2
+                ):
+                    publish_simulation_status()
 
-            logger.info(
-                (
-                    "Level: %.2f%% | "
-                    "Liters: %.2f | "
-                    "Pump: %s | "
-                    "Borehole: %s | "
-                    "Mode: %s%s"
-                ),
-                level,
-                liters,
-                (
-                    "ON"
-                    if bomba_rega.is_active
-                    else "OFF"
-                ),
-                (
-                    "ON"
-                    if valvula_furo.is_active
-                    else "OFF"
-                ),
-                system_mode,
-                (
-                    " | MOCK"
-                    if MOCK_SENSOR
-                    else ""
-                ),
+                    last_simulation_publish = now
+
+            # ------------------------------------------------
+            # Health / metrics
+            # ------------------------------------------------
+
+            publish_health()
+            publish_metrics()
+
+            # ------------------------------------------------
+            # Loop metrics
+            # ------------------------------------------------
+
+            duration_ms = (
+                time.monotonic()
+                - loop_started
+            ) * 1000.0
+
+            metrics[
+                "last_loop_duration_ms"
+            ] = round(
+                duration_ms,
+                2,
             )
 
+            metrics[
+                "max_loop_duration_ms"
+            ] = max(
+                metrics[
+                    "max_loop_duration_ms"
+                ],
+                duration_ms,
+            )
+
+            metrics[
+                "loop_count"
+            ] += 1
+
+            last_loop_time = time.time()
+
         except Exception as exc:
+            metrics[
+                "loop_errors"
+            ] += 1
+
+            metrics[
+                "last_error"
+            ] = str(exc)
+
+            metrics[
+                "last_error_at"
+            ] = datetime.now().isoformat()
+
             logger.exception(
                 "Controller loop error"
             )
 
-            handle_sensor_failure(
-                str(exc)
+        finally:
+            elapsed = (
+                time.monotonic()
+                - loop_started
             )
 
-        time.sleep(
-            LOOP_INTERVAL_SECONDS
-        )
+            sleep_time = max(
+                0,
+                LOOP_INTERVAL_SECONDS
+                - elapsed,
+            )
+
+            time.sleep(
+                sleep_time
+            )
 
 
 # ============================================================
-# SHUTDOWN
+# MQTT SETUP
 # ============================================================
 
-def shutdown(signum=None, frame=None):
+def setup_mqtt():
+    global mqtt_client
+
+    mqtt_client.on_connect = on_connect
+    mqtt_client.on_disconnect = on_disconnect
+    mqtt_client.on_message = on_message
+
+    mqtt_client.reconnect_delay_set(
+        min_delay=1,
+        max_delay=MQTT_RECONNECT_DELAY_SECONDS,
+    )
+
+    # --------------------------------------------------------
+    # Last Will
+    # --------------------------------------------------------
+
+    mqtt_client.will_set(
+        TOPIC_SYSTEM_HEALTH,
+        json.dumps(
+            {
+                "status": "OFFLINE",
+                "mqtt_connected": False,
+                "timestamp": datetime.now().isoformat(),
+            }
+        ),
+        qos=1,
+        retain=True,
+    )
+
+    logger.info(
+        "Connecting to MQTT %s:%s",
+        MQTT_HOST,
+        MQTT_PORT,
+    )
+
+    mqtt_client.connect(
+        MQTT_HOST,
+        MQTT_PORT,
+        keepalive=60,
+    )
+
+    mqtt_client.loop_start()
+
+
+# ============================================================
+# SAFE SHUTDOWN
+# ============================================================
+
+def safe_shutdown():
     global running
+    global mqtt_connected
 
     if not running:
         return
 
-    logger.warning(
+    logger.info(
         "Shutting down controller..."
     )
 
     running = False
 
-    # SAFETY FIRST
     try:
-        safe_all_outputs_off()
-    except Exception:
-        logger.exception(
-            "Failed to turn outputs OFF"
+        stop_pump(
+            reason="controller shutdown"
         )
-
-    try:
-        mqtt_publish(
-            TOPIC_HEALTH,
-            "OFFLINE",
-            retain=True,
-        )
-    except Exception:
-        pass
-
-    try:
-        if mqtt_client is not None:
-            mqtt_client.loop_stop()
-            mqtt_client.disconnect()
-    except Exception:
-        logger.exception(
-            "MQTT shutdown failed"
-        )
-
-    try:
-        if sensor is not None:
-            sensor.close()
-
-        if valvula_furo is not None:
-            valvula_furo.close()
-
-        if bomba_rega is not None:
-            bomba_rega.close()
 
     except Exception:
         logger.exception(
-            "Hardware shutdown failed"
+            "Failed to stop pump"
         )
+
+    try:
+        stop_borehole(
+            reason="controller shutdown"
+        )
+
+    except Exception:
+        logger.exception(
+            "Failed to stop borehole"
+        )
+
+    # --------------------------------------------------------
+    # Publish offline before disconnecting.
+    # --------------------------------------------------------
+
+    try:
+        if mqtt_connected:
+            mqtt_publish(
+                TOPIC_SYSTEM_HEALTH,
+                {
+                    "status": "OFFLINE",
+                    "mqtt_connected": False,
+                    "timestamp": datetime.now().isoformat(),
+                },
+                retain=True,
+            )
+
+            time.sleep(0.2)
+
+    except Exception:
+        logger.exception(
+            "Failed to publish OFFLINE state"
+        )
+
+    try:
+        mqtt_client.loop_stop()
+    except Exception:
+        logger.exception(
+            "Failed to stop MQTT loop"
+        )
+
+    try:
+        mqtt_client.disconnect()
+    except Exception:
+        logger.exception(
+            "Failed to disconnect MQTT"
+        )
+
+    mqtt_connected = False
 
     logger.info(
-        "Controller stopped"
+        "Controller shutdown complete"
     )
+
+
+def signal_handler(
+    signum,
+    frame,
+):
+    logger.info(
+        "Received signal %s",
+        signum,
+    )
+
+    safe_shutdown()
 
 
 # ============================================================
@@ -1451,37 +2695,89 @@ def main():
     )
 
     logger.info(
-        "Mock sensor: %s",
-        MOCK_SENSOR,
+        "MQTT: %s:%s",
+        MQTT_HOST,
+        MQTT_PORT,
     )
 
-    init_db()
-    load_config()
+    logger.info(
+        "DB: %s",
+        DB_PATH,
+    )
 
-    initialize_hardware()
-
-    configure_mqtt()
-
-    signal.signal(
-        signal.SIGTERM,
-        shutdown,
+    logger.info(
+        "MOCK_SENSOR: %s",
+        MOCK_SENSOR,
     )
 
     signal.signal(
         signal.SIGINT,
-        shutdown,
+        signal_handler,
     )
 
-    if not connect_mqtt():
-        logger.error(
-            "Could not establish MQTT connection"
-        )
+    signal.signal(
+        signal.SIGTERM,
+        signal_handler,
+    )
 
     try:
+        # ----------------------------------------------------
+        # Database
+        # ----------------------------------------------------
+
+        init_db()
+
+        # ----------------------------------------------------
+        # Configuration
+        # ----------------------------------------------------
+
+        load_config()
+
+        # ----------------------------------------------------
+        # Sensor
+        # ----------------------------------------------------
+
+        if MOCK_SENSOR:
+            cfg = get_config_snapshot()
+
+            logger.info(
+                "Mock sensor enabled"
+            )
+
+            logger.info(
+                "Initial simulated level: %.2f%%",
+                cfg["mock_initial_level"],
+            )
+
+        else:
+            logger.info(
+                "Real sensor enabled"
+            )
+
+        # ----------------------------------------------------
+        # MQTT
+        # ----------------------------------------------------
+
+        setup_mqtt()
+
+        # ----------------------------------------------------
+        # Main control loop
+        # ----------------------------------------------------
+
         control_loop()
 
+    except KeyboardInterrupt:
+        logger.info(
+            "Keyboard interrupt"
+        )
+
+    except Exception:
+        logger.exception(
+            "Fatal controller error"
+        )
+
     finally:
-        shutdown()
+        safe_shutdown()
 
 
 if __name__ == "__main__":
