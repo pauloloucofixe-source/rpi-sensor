@@ -4,84 +4,58 @@ services:
     image: eclipse-mosquitto:2
     container_name: mina-mosquitto
     restart: unless-stopped
-
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
-
     networks:
       - mina
-
 
   controller:
     build:
       context: ./controller
-
     container_name: mina-controller
     restart: unless-stopped
-
+    privileged: true  # <--- CRÍTICO: Dá acesso aos pinos GPIO do Raspberry Pi
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
-
-      # Timezone
       TZ: Europe/Lisbon
-
-      # LOCAL DEVELOPMENT
-      MOCK_SENSOR: "true"
-
-      # Mock water behaviour
-      MOCK_INITIAL_LEVEL: "50"
-      MOCK_NATURAL_DRAIN_PER_MINUTE: "0.15"
-      MOCK_BOREHOLE_FILL_PER_MINUTE: "2.0"
-      MOCK_IRRIGATION_DRAIN_PER_MINUTE: "1.0"
+      
+      # Vai ler o valor (false) diretamente do teu ficheiro .env
+      MOCK_SENSOR: ${MOCK_SENSOR}
 
       DB_PATH: /data/mina.db
-
     volumes:
       - mina_data:/data
-
     depends_on:
       - mosquitto
-
     networks:
       - mina
-
 
   web:
     build:
       context: ./web
-
     container_name: mina-web
     restart: unless-stopped
-
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
-
       TZ: Europe/Lisbon
-
       DB_PATH: /data/mina.db
-
     volumes:
       - mina_data:/data:ro
-
     ports:
       - "5000:5000"
-
     depends_on:
       - mosquitto
       - controller
-
     networks:
       - mina
-
 
 networks:
   mina:
     driver: bridge
-
 
 volumes:
   mina_data:
