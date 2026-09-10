@@ -97,7 +97,7 @@ DEFAULT_CONFIG = {
     "horas": [3, 6, 11, 15, 18, 23],
     "scheduled_borehole_max_level": 80.0,
 
-    "irrigation_start_level": 60.0,
+    "irrigation_start_level": 20.0,
     "irrigation_stop_level": 15.0,
 
     "critical_level": 10.0,
